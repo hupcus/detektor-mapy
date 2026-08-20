@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 /**
  * State holder for the map screen.
@@ -90,8 +91,9 @@ class MapViewModel @Inject constructor(
 
     // --- camera / viewport -----------------------------------------------------------
 
-    fun onViewportChanged(bbox: BBox) {
+    fun onViewportChanged(bbox: BBox, zoom: Double) {
         viewport = bbox
+        layerManager.rememberCamera(bbox.centerLat, bbox.centerLon, zoom)
         val layerId = calibrationLayerState.value
         if (modeState.value != MapMode.CALIBRATE && layerId != null) {
             refreshCalibrationFor(layerId, bbox.centerLat, bbox.centerLon)
@@ -333,13 +335,20 @@ class MapViewModel @Inject constructor(
             return
         }
         val hit = layerManager.protectedAreaAt(fix.lat, fix.lon)
-        if (hit?.layerId != protectedAreaState.value?.layerId ||
-            hit?.category != protectedAreaState.value?.category
-        ) {
-            protectedAreaState.value = hit
-            if (hit != null) {
-                messageState.value = "Pozor: stojíš v ${hit.category}"
-            }
+        val previous = protectedAreaState.value
+
+        // Always refresh so the distance counts down live, but only shout when the situation
+        // actually changes -- a snackbar on every GPS fix would be unusable.
+        protectedAreaState.value = hit
+        val crossedInside = hit != null && hit.isInside && previous?.isInside != true
+        val newArea = hit != null && !hit.isInside &&
+            (previous == null || previous.category != hit.category || previous.name != hit.name)
+        when {
+            crossedInside -> messageState.value = "Pozor: stojíš v ${hit.category}"
+
+            newArea ->
+                messageState.value =
+                    "Blížíš se k ${hit.category} (${hit.distanceM.roundToInt()} m)"
         }
     }
 

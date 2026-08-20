@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -30,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,9 +45,10 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
-import cz.hh.detektormapy.map.DefaultLayers
+import cz.hh.detektormapy.map.MapCamera
 import cz.hh.detektormapy.ui.map.MapStyle
 import cz.hh.detektormapy.ui.map.rememberMapViewWithLifecycle
+import cz.hh.detektormapy.util.BBox
 import cz.hh.detektormapy.util.WebMercator
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -76,6 +79,7 @@ fun GcpEditorScreen(
 ) {
     LaunchedEffect(layerId) { viewModel.bind(layerId) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val camera by viewModel.camera.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var askLabel by remember { mutableStateOf(false) }
 
@@ -117,6 +121,8 @@ fun GcpEditorScreen(
             GcpMapPane(
                 layerId = layerId,
                 urlTemplate = viewModel.urlTemplateFor(layerId),
+                camera = camera,
+                zoomRange = viewModel.zoomRangeOf(layerId),
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
@@ -126,9 +132,9 @@ fun GcpEditorScreen(
             PaneLabel(text = "2) Klepni na stejné místo v ortofotu")
             GcpMapPane(
                 layerId = ORTHO_LAYER_ID,
-                urlTemplate = viewModel.urlTemplateFor(ORTHO_LAYER_ID)
-                    ?: DefaultLayers.catalog.layers
-                        .firstOrNull { it.id == ORTHO_LAYER_ID }?.source,
+                urlTemplate = viewModel.urlTemplateFor(ORTHO_LAYER_ID),
+                camera = camera,
+                zoomRange = viewModel.zoomRangeOf(ORTHO_LAYER_ID),
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
@@ -186,64 +192,108 @@ private fun PaneLabel(text: String) {
     )
 }
 
-/** One map pane rendering a single raster layer, with a tap callback and a crosshair. */
+/**
+ * One map pane rendering a single raster layer, with a tap callback and a crosshair.
+ *
+ * Two things here were broken and are worth calling out, because both made the pane render
+ * nothing at all:
+ *  - the camera used to be pinned to a hardcoded point in the middle of the country, so even a
+ *    working layer showed the wrong place;
+ *  - the raster source was attached exactly once, on the first composition. The tile server is
+ *    started asynchronously, so `urlTemplate` is usually still null at that moment and the
+ *    source was never attached at all. It is now attached as soon as the URL appears.
+ */
 @Composable
 private fun GcpMapPane(
     layerId: String,
     urlTemplate: String?,
+    camera: MapCamera,
+    zoomRange: IntRange,
     modifier: Modifier = Modifier,
     onTap: (Double, Double) -> Unit,
 ) {
     val mapView = rememberMapViewWithLifecycle()
-    var initialised by remember { mutableStateOf(false) }
+    var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
+    var styleRef by remember { mutableStateOf<Style?>(null) }
+    var attachedUrl by remember { mutableStateOf<String?>(null) }
+    var framed by remember { mutableStateOf(false) }
 
     Box(modifier) {
-        AndroidView(
-            factory = { mapView },
-            modifier = Modifier.fillMaxSize(),
-            update = { view ->
-                if (!initialised) {
-                    initialised = true
-                    view.getMapAsync { map: MapLibreMap ->
-                        map.uiSettings.isRotateGesturesEnabled = false
-                        map.uiSettings.isTiltGesturesEnabled = false
-                        map.setStyle(Style.Builder().fromJson(MapStyle.emptyStyleJson())) { style ->
-                            if (urlTemplate != null) {
-                                runCatching {
-                                    val sourceId = MapStyle.rasterSourceId(layerId)
-                                    style.addSource(
-                                        RasterSource(sourceId, TileSet("2.2.0", urlTemplate), 256),
-                                    )
-                                    style.addLayer(
-                                        RasterLayer(MapStyle.rasterLayerId(layerId), sourceId)
-                                            .withProperties(PropertyFactory.rasterOpacity(1f)),
-                                    )
-                                }
-                            }
-                        }
-                        map.moveCamera(
-                            CameraUpdateFactory.newCameraPosition(
-                                CameraPosition.Builder()
-                                    .target(LatLng(49.8, 15.5))
-                                    .zoom(13.0)
-                                    .build(),
-                            ),
-                        )
-                        map.addOnMapClickListener { latLng ->
-                            onTap(latLng.latitude, latLng.longitude)
-                            true
-                        }
-                    }
+        AndroidView(factory = { mapView }, modifier = Modifier.fillMaxSize())
+
+        DisposableEffect(mapView) {
+            mapView.getMapAsync { map: MapLibreMap ->
+                map.uiSettings.isRotateGesturesEnabled = false
+                map.uiSettings.isTiltGesturesEnabled = false
+                map.uiSettings.isLogoEnabled = false
+                map.setStyle(Style.Builder().fromJson(MapStyle.emptyStyleJson())) { style ->
+                    styleRef = style
                 }
-            },
-        )
+                map.addOnMapClickListener { latLng ->
+                    onTap(latLng.latitude, latLng.longitude)
+                    true
+                }
+                mapRef = map
+            }
+            onDispose { }
+        }
+
+        // Attach the raster as soon as the tile server hands out a URL, and re-attach if the
+        // URL changes (server restart gives a new port).
+        LaunchedEffect(styleRef, urlTemplate) {
+            val style = styleRef ?: return@LaunchedEffect
+            val template = urlTemplate ?: return@LaunchedEffect
+            if (attachedUrl == template) return@LaunchedEffect
+            runCatching {
+                val sourceId = MapStyle.rasterSourceId(layerId)
+                style.getLayer(MapStyle.rasterLayerId(layerId))?.let { style.removeLayer(it) }
+                style.getSource(sourceId)?.let { style.removeSource(it) }
+                style.addSource(RasterSource(sourceId, TileSet("2.2.0", template), 256))
+                style.addLayer(
+                    RasterLayer(MapStyle.rasterLayerId(layerId), sourceId)
+                        .withProperties(PropertyFactory.rasterOpacity(1f)),
+                )
+                attachedUrl = template
+            }
+        }
+
+        // Open where the main map was, at the same scale -- and never below the zoom at which
+        // this layer actually has tiles, otherwise the pane is silently empty.
+        LaunchedEffect(mapRef, camera) {
+            val map = mapRef ?: return@LaunchedEffect
+            if (framed) return@LaunchedEffect
+            framed = true
+            val zoom = camera.zoom.coerceIn(zoomRange.first.toDouble(), zoomRange.last.toDouble())
+            runCatching {
+                map.moveCamera(
+                    CameraUpdateFactory.newLatLngZoom(LatLng(camera.lat, camera.lon), zoom),
+                )
+            }
+        }
+
+        if (urlTemplate == null) {
+            Text(
+                "Vrstva není k dispozici — chybí data nebo signál.",
+                Modifier
+                    .align(Alignment.Center)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(8.dp),
+                style = MaterialTheme.typography.labelLarge,
+            )
+        }
+
         // Crosshair so the tap target is unambiguous.
         Box(
             Modifier
                 .align(Alignment.Center)
-                .background(Color(0x88FF0000))
-                .fillMaxWidth(0.002f)
-                .heightIn(min = 24.dp),
+                .size(width = 2.dp, height = 28.dp)
+                .background(Color(0xCCB3261E)),
+        )
+        Box(
+            Modifier
+                .align(Alignment.Center)
+                .size(width = 28.dp, height = 2.dp)
+                .background(Color(0xCCB3261E)),
         )
     }
 }

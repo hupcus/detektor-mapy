@@ -14,6 +14,48 @@ data class IndexedPolygon(
     val properties: Map<String, String>,
     val bounds: BBox,
 ) {
+    /**
+     * Metres from the point to the nearest edge of this polygon, 0 when inside.
+     *
+     * Distances are computed in a local equirectangular frame scaled at the query latitude.
+     * Over the few hundred metres that matter for a warning the error is far below GPS noise,
+     * and it avoids a haversine per segment over hundreds of polygons on every fix.
+     */
+    fun distanceMetersTo(lat: Double, lon: Double): Double {
+        if (contains(lat, lon)) return 0.0
+        val mPerDegLat = 111_132.0
+        val mPerDegLon = 111_320.0 * kotlin.math.cos(Math.toRadians(lat))
+        val px = lon * mPerDegLon
+        val py = lat * mPerDegLat
+        var best = Double.MAX_VALUE
+        for (ring in rings) {
+            for (i in ring.indices) {
+                val (aLat, aLon) = ring[i]
+                val (bLat, bLon) = ring[(i + 1) % ring.size]
+                val d = pointToSegment(
+                    px,
+                    py,
+                    aLon * mPerDegLon,
+                    aLat * mPerDegLat,
+                    bLon * mPerDegLon,
+                    bLat * mPerDegLat,
+                )
+                if (d < best) best = d
+            }
+        }
+        return best
+    }
+
+    private fun pointToSegment(px: Double, py: Double, ax: Double, ay: Double, bx: Double, by: Double): Double {
+        val dx = bx - ax
+        val dy = by - ay
+        val lenSq = dx * dx + dy * dy
+        val t = if (lenSq <= 0.0) 0.0 else (((px - ax) * dx + (py - ay) * dy) / lenSq).coerceIn(0.0, 1.0)
+        val cx = ax + t * dx
+        val cy = ay + t * dy
+        return kotlin.math.hypot(px - cx, py - cy)
+    }
+
     /** Ray-casting point-in-polygon, holes subtracted. */
     fun contains(lat: Double, lon: Double): Boolean {
         if (!bounds.contains(lat, lon)) return false
@@ -56,6 +98,37 @@ class PolygonIndex(val polygons: List<IndexedPolygon>) {
 
     /** The first polygon containing the point, or null. */
     fun featureAt(lat: Double, lon: Double): IndexedPolygon? = polygons.firstOrNull { it.contains(lat, lon) }
+
+    /**
+     * Nearest polygon within [maxMeters], with its distance -- 0 when the point is inside one.
+     *
+     * Being told "you are standing in a protected area" is already too late; the useful warning
+     * is the one that arrives while you are still walking towards the boundary. Candidates are
+     * pre-filtered by a bounding box grown by [maxMeters] so the expensive edge walk only runs
+     * for polygons that could plausibly be in range.
+     */
+    fun nearest(lat: Double, lon: Double, maxMeters: Double): Pair<IndexedPolygon, Double>? {
+        if (polygons.isEmpty()) return null
+        val padLat = maxMeters / 111_132.0
+        val cosLat = kotlin.math.cos(Math.toRadians(lat))
+        val padLon = if (cosLat < 1e-6) 180.0 else maxMeters / (111_320.0 * cosLat)
+
+        var bestPolygon: IndexedPolygon? = null
+        var bestDistance = Double.MAX_VALUE
+        for (polygon in polygons) {
+            val b = polygon.bounds
+            if (lat < b.south - padLat || lat > b.north + padLat) continue
+            if (lon < b.west - padLon || lon > b.east + padLon) continue
+            val d = polygon.distanceMetersTo(lat, lon)
+            if (d < bestDistance) {
+                bestDistance = d
+                bestPolygon = polygon
+                if (d == 0.0) break
+            }
+        }
+        val polygon = bestPolygon ?: return null
+        return if (bestDistance <= maxMeters) polygon to bestDistance else null
+    }
 
     /** Value of [key] on the polygon containing the point; used to show "ÚAN II". */
     fun propertyAt(lat: Double, lon: Double, key: String): String? = featureAt(lat, lon)?.properties?.get(key)

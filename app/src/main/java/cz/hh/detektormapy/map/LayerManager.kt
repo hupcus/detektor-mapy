@@ -85,6 +85,23 @@ class LayerManager @Inject constructor(
     /** GeoJSON payloads currently loaded, keyed by layer id. */
     val geoJson: StateFlow<Map<String, String>> = geoJsonLayers
 
+    private val lastCameraState = MutableStateFlow(MapCamera.CZECHIA)
+
+    /**
+     * Where the user last had the map, as centre + zoom rather than a bounding box.
+     *
+     * Calibration screens open here instead of at a fixed point in the middle of the country --
+     * you calibrate the area you are standing in. Centre+zoom rather than bounds because the
+     * calibration panes are half-height: fitting the main map's bounds into them drops roughly
+     * two zoom levels, which is enough to fall below an offline layer's minimum zoom and show
+     * an empty pane.
+     */
+    val lastCamera: StateFlow<MapCamera> = lastCameraState
+
+    fun rememberCamera(lat: Double, lon: Double, zoom: Double) {
+        lastCameraState.value = MapCamera(lat, lon, zoom)
+    }
+
     @Volatile
     private var started = false
 
@@ -201,22 +218,25 @@ class LayerManager @Inject constructor(
      * Which protected-area category the given position falls into, if any (issue F4-3).
      * Only layers flagged as ÚAN in `layers.json` are consulted.
      */
-    fun protectedAreaAt(lat: Double, lon: Double): ProtectedAreaHit? {
+    fun protectedAreaAt(lat: Double, lon: Double, warnWithinMeters: Double = APPROACH_WARNING_M): ProtectedAreaHit? {
+        var best: ProtectedAreaHit? = null
         catalog.value.layers
             .filter { it.kind == LayerKind.GEOJSON && it.isProtectedArea }
             .forEach { def ->
                 val index = polygonIndexes[def.id] ?: return@forEach
-                val hit = index.featureAt(lat, lon) ?: return@forEach
+                val (polygon, distance) = index.nearest(lat, lon, warnWithinMeters) ?: return@forEach
+                if (best != null && distance >= best.distanceM) return@forEach
                 val category = PROTECTED_CATEGORY_KEYS
-                    .firstNotNullOfOrNull { key -> hit.properties[key]?.takeIf { it.isNotBlank() } }
-                return ProtectedAreaHit(
+                    .firstNotNullOfOrNull { key -> polygon.properties[key]?.takeIf { it.isNotBlank() } }
+                best = ProtectedAreaHit(
                     layerId = def.id,
                     layerTitle = def.title,
                     category = category ?: def.title,
-                    name = hit.properties["Nazev"].orEmpty(),
+                    name = polygon.properties["Nazev"].orEmpty(),
+                    distanceM = distance,
                 )
             }
-        return null
+        return best
     }
 
     fun shutdown() {
@@ -337,6 +357,16 @@ class LayerManager @Inject constructor(
 
         /** Property names the NPÚ ÚAN service uses for the category. */
         val PROTECTED_CATEGORY_KEYS = listOf("Kategorie", "kategorie", "KATEGORIE")
+
+        /**
+         * How far ahead a protected area is announced.
+         *
+         * 120 m turned out to be too tight: under tree cover GPS is routinely +/-15 m, and 120 m
+         * is under two minutes of walking, so the warning can arrive with the boundary already
+         * in reach. The margin costs nothing -- the banner shows the live distance, so an early
+         * warning is informative rather than noisy.
+         */
+        const val APPROACH_WARNING_M = 250.0
     }
 }
 
@@ -348,4 +378,20 @@ fun LayerDef.boundsBox(): BBox? {
 }
 
 /** Result of a protected-area lookup, used for the ÚAN warning banner. */
-data class ProtectedAreaHit(val layerId: String, val layerTitle: String, val category: String, val name: String)
+data class ProtectedAreaHit(
+    val layerId: String,
+    val layerTitle: String,
+    val category: String,
+    val name: String,
+    /** Distance to the boundary in metres; 0 means the position is inside the area. */
+    val distanceM: Double,
+) {
+    val isInside: Boolean get() = distanceM <= 0.0
+}
+
+/** Camera position remembered across screens. */
+data class MapCamera(val lat: Double, val lon: Double, val zoom: Double) {
+    companion object {
+        val CZECHIA = MapCamera(BBox.CZECHIA.centerLat, BBox.CZECHIA.centerLon, 7.0)
+    }
+}

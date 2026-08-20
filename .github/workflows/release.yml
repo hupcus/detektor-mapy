@@ -177,8 +177,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
+          # Pozor na pořadí větví: v GitHub výrazech je prázdný řetězec nepravdivý,
+          # takže `podmínka && '' || 'B'` vrátí 'B' i když podmínka platí. Neprázdná
+          # hodnota proto musí být na pravdivé straně.
           name: >-
-            DetektorMapy ${{ steps.tag.outputs.tag }}${{ steps.keystore.outputs.signed == 'true' && '' || ' (nepodepsano)' }}
+            DetektorMapy ${{ steps.tag.outputs.tag }}${{ steps.keystore.outputs.signed != 'true' && ' (nepodepsano)' || '' }}
           body_path: ${{ steps.notes.outputs.file }}
           files: ${{ steps.apk.outputs.path }}
           draft: false

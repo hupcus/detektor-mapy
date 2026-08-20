@@ -109,9 +109,18 @@ class GcpEditorViewModel @Inject constructor(
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), GcpEditorState())
 
+    /** Where the map was last pointing; both panes open here, at the same scale. */
+    val camera get() = layerManager.lastCamera
+
+    /** Zoom limits of a layer, so a pane can be clamped into the range that has data. */
+    fun zoomRangeOf(id: String): IntRange = layerManager.definitionOf(id)?.let { it.minZoom..it.maxZoom } ?: 0..19
+
     fun bind(layerId: String) {
         if (layerIdState.value == layerId && setIdState.value != null) return
         layerIdState.value = layerId
+        // The editor can be reached without visiting the map first, so make sure the tile
+        // server is up before the panes ask it for a URL.
+        layerManager.ensureStarted()
         viewModelScope.launch {
             val existing = gcpRepository.getAllSets().firstOrNull { it.layerId == layerId }
             setIdState.value = existing?.id ?: gcpRepository.createSet(

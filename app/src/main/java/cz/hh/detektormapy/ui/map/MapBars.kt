@@ -256,7 +256,11 @@ fun ProtectedAreaBanner(hit: cz.hh.detektormapy.map.ProtectedAreaHit, modifier: 
     ) {
         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Text(
-                "⚠ ${hit.category}",
+                text = if (hit.isInside) {
+                    "⚠ ${hit.category}"
+                } else {
+                    "⚠ ${hit.category} — ${hit.distanceM.roundToInt()} m"
+                },
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onErrorContainer,
             )
@@ -266,7 +270,15 @@ fun ProtectedAreaBanner(hit: cz.hh.detektormapy.map.ProtectedAreaHit, modifier: 
                         append(hit.name)
                         append(" — ")
                     }
-                    append("hledání bez povolení je zde zakázané")
+                    // The distinction matters: one is a warning, the other is a statement of
+                    // fact about where you are standing right now.
+                    append(
+                        if (hit.isInside) {
+                            "hledání bez povolení je zde zakázané"
+                        } else {
+                            "blížíš se k hranici chráněného území"
+                        },
+                    )
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onErrorContainer,

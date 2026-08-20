@@ -174,7 +174,7 @@ fun MapScreen(navController: NavHostController, viewModel: MapViewModel = hiltVi
 
                 map.addOnCameraIdleListener {
                     val bbox = map.visibleBBox()
-                    viewModel.onViewportChanged(bbox)
+                    viewModel.onViewportChanged(bbox, map.cameraPosition.zoom)
                     viewModel.refreshAllCalibrations(bbox.centerLat, bbox.centerLon)
                 }
 

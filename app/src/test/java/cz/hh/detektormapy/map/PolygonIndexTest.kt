@@ -108,6 +108,70 @@ class PolygonIndexTest {
     }
 
     @Test
+    fun `distance is zero inside and grows with distance outside`() {
+        val index = PolygonIndex.parse(collection(square(15.0, 49.0, 16.0, 50.0)))
+        val polygon = index.polygons.single()
+
+        assertThat(polygon.distanceMetersTo(49.5, 15.5)).isEqualTo(0.0)
+
+        // 0.01 deg of latitude south of the southern edge is ~1111 m.
+        val south = polygon.distanceMetersTo(48.99, 15.5)
+        assertThat(south).isWithin(30.0).of(1111.0)
+
+        // Twice as far away must read as roughly twice the distance.
+        val further = polygon.distanceMetersTo(48.98, 15.5)
+        assertThat(further).isGreaterThan(south * 1.9)
+    }
+
+    @Test
+    fun `nearest reports an approaching area before it is entered`() {
+        val index = PolygonIndex.parse(
+            collection(square(15.0, 49.0, 16.0, 50.0, name = "Chráněno")),
+        )
+        // ~55 m south of the boundary.
+        val hit = index.nearest(49.0 - 0.0005, 15.5, maxMeters = 120.0)
+        assertThat(hit).isNotNull()
+        assertThat(hit!!.second).isGreaterThan(0.0)
+        assertThat(hit.second).isLessThan(120.0)
+        assertThat(hit.first.properties["Nazev"]).isEqualTo("Chráněno")
+    }
+
+    @Test
+    fun `nearest reports zero distance when standing inside`() {
+        val index = PolygonIndex.parse(collection(square(15.0, 49.0, 16.0, 50.0)))
+        val hit = index.nearest(49.5, 15.5, maxMeters = 120.0)
+        assertThat(hit).isNotNull()
+        assertThat(hit!!.second).isEqualTo(0.0)
+    }
+
+    @Test
+    fun `nearest ignores areas beyond the radius`() {
+        val index = PolygonIndex.parse(collection(square(15.0, 49.0, 16.0, 50.0)))
+        // ~1.1 km south, well outside a 120 m warning radius.
+        assertThat(index.nearest(48.99, 15.5, maxMeters = 120.0)).isNull()
+        // …but a generous radius finds it.
+        assertThat(index.nearest(48.99, 15.5, maxMeters = 2000.0)).isNotNull()
+    }
+
+    @Test
+    fun `nearest prefers the closer of two areas`() {
+        val index = PolygonIndex.parse(
+            collection(
+                square(15.0, 49.0, 15.2, 49.2, name = "Daleko"),
+                square(15.0, 48.995, 15.2, 48.999, name = "Blizko"),
+            ),
+        )
+        val hit = index.nearest(48.9945, 15.1, maxMeters = 500.0)
+        assertThat(hit).isNotNull()
+        assertThat(hit!!.first.properties["Nazev"]).isEqualTo("Blizko")
+    }
+
+    @Test
+    fun `nearest on an empty index is null`() {
+        assertThat(PolygonIndex.EMPTY.nearest(50.0, 15.0, maxMeters = 500.0)).isNull()
+    }
+
+    @Test
     fun `lookups outside every bounding box are cheap and null`() {
         val index = PolygonIndex.parse(
             collection(
