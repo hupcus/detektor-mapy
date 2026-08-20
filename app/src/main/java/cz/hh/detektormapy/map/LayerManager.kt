@@ -201,6 +201,12 @@ class LayerManager @Inject constructor(
 
     fun setKeepScreenOn(enabled: Boolean) = scope.launch { prefs.setKeepScreenOn(enabled) }
 
+    fun setShowFinds(enabled: Boolean) = scope.launch { prefs.setShowFinds(enabled) }
+
+    fun setShowPlaces(enabled: Boolean) = scope.launch { prefs.setShowPlaces(enabled) }
+
+    fun setShowAreas(enabled: Boolean) = scope.launch { prefs.setShowAreas(enabled) }
+
     /**
      * Applies (or clears) the runtime calibration of a layer. The server bumps its cache
      * generation internally, so the next MapLibre tile request already gets warped pixels.
@@ -213,31 +219,6 @@ class LayerManager @Inject constructor(
     }
 
     fun calibrationOf(layerId: String): Affine2D? = server.calibrationOf(layerId)
-
-    /**
-     * Which protected-area category the given position falls into, if any (issue F4-3).
-     * Only layers flagged as ÚAN in `layers.json` are consulted.
-     */
-    fun protectedAreaAt(lat: Double, lon: Double, warnWithinMeters: Double = APPROACH_WARNING_M): ProtectedAreaHit? {
-        var best: ProtectedAreaHit? = null
-        catalog.value.layers
-            .filter { it.kind == LayerKind.GEOJSON && it.isProtectedArea }
-            .forEach { def ->
-                val index = polygonIndexes[def.id] ?: return@forEach
-                val (polygon, distance) = index.nearest(lat, lon, warnWithinMeters) ?: return@forEach
-                if (best != null && distance >= best.distanceM) return@forEach
-                val category = PROTECTED_CATEGORY_KEYS
-                    .firstNotNullOfOrNull { key -> polygon.properties[key]?.takeIf { it.isNotBlank() } }
-                best = ProtectedAreaHit(
-                    layerId = def.id,
-                    layerTitle = def.title,
-                    category = category ?: def.title,
-                    name = polygon.properties["Nazev"].orEmpty(),
-                    distanceM = distance,
-                )
-            }
-        return best
-    }
 
     fun shutdown() {
         openArchives.values.forEach { runCatching { it.close() } }
@@ -354,19 +335,6 @@ class LayerManager @Inject constructor(
 
     private companion object {
         const val TAG = "LayerManager"
-
-        /** Property names the NPÚ ÚAN service uses for the category. */
-        val PROTECTED_CATEGORY_KEYS = listOf("Kategorie", "kategorie", "KATEGORIE")
-
-        /**
-         * How far ahead a protected area is announced.
-         *
-         * 120 m turned out to be too tight: under tree cover GPS is routinely +/-15 m, and 120 m
-         * is under two minutes of walking, so the warning can arrive with the boundary already
-         * in reach. The margin costs nothing -- the banner shows the live distance, so an early
-         * warning is informative rather than noisy.
-         */
-        const val APPROACH_WARNING_M = 250.0
     }
 }
 
@@ -375,18 +343,6 @@ fun LayerDef.boundsBox(): BBox? {
     val b = bounds ?: return null
     if (b.size != 4) return null
     return runCatching { BBox(b[0], b[1], b[2], b[3]) }.getOrNull()
-}
-
-/** Result of a protected-area lookup, used for the ÚAN warning banner. */
-data class ProtectedAreaHit(
-    val layerId: String,
-    val layerTitle: String,
-    val category: String,
-    val name: String,
-    /** Distance to the boundary in metres; 0 means the position is inside the area. */
-    val distanceM: Double,
-) {
-    val isInside: Boolean get() = distanceM <= 0.0
 }
 
 /** Camera position remembered across screens. */

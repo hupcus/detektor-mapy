@@ -25,17 +25,22 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -78,9 +83,27 @@ fun SettingsScreen(navController: NavHostController) {
         }
     }
 
+    // Settings used to be one endless scroll. Tabs keep each screenful to a single topic, so
+    // what you came for is one tap away instead of somewhere in a wall of rows.
+    var tab by rememberSaveable { mutableStateOf(0) }
+    val tabs = listOf("Mapa", "Detektor", "Data", "Ostatní")
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        topBar = { TopAppBar(title = { Text("Nastavení") }) },
+        topBar = {
+            Column {
+                TopAppBar(title = { Text("Nastavení") })
+                PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
+                    tabs.forEachIndexed { index, title ->
+                        Tab(
+                            selected = tab == index,
+                            onClick = { tab = index },
+                            text = { Text(title) },
+                        )
+                    }
+                }
+            }
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(
@@ -91,38 +114,58 @@ fun SettingsScreen(navController: NavHostController) {
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            LayersGroup(
-                state = state,
-                onReload = viewModel::reloadLayers,
-                onCalibrate = { navController.navigate(Routes.calibrations(it)) },
-            )
-            MapGroup(
-                state = state,
-                onRotate = viewModel::setRotateWithCompass,
-                onFollow = viewModel::setFollowMode,
-                onKeepScreenOn = viewModel::setKeepScreenOn,
-            )
-            DataGroup(
-                state = state,
-                onExport = { viewModel.exportAll() },
-                onImport = {
-                    importPicker.launch(
-                        arrayOf("application/zip", "application/octet-stream", "*/*"),
-                    )
-                },
-            )
-            SettingsGroup("Záznam") {
-                NavigationRow("Pochůzky (tracky)", "Seznam nahraných tras a export GPX") {
-                    navController.navigate(Routes.TRACKS)
+            if (tab == 0) {
+                LayersGroup(
+                    state = state,
+                    onReload = viewModel::reloadLayers,
+                    onCalibrate = { navController.navigate(Routes.calibrations(it)) },
+                )
+                MapGroup(
+                    state = state,
+                    onRotate = viewModel::setRotateWithCompass,
+                    onFollow = viewModel::setFollowMode,
+                    onKeepScreenOn = viewModel::setKeepScreenOn,
+                )
+            }
+            if (tab == 1) {
+                SettingsGroup("Detektor") {
+                    NavigationRow(
+                        "Rádce nastavení",
+                        "Podle terénu a počasí poradí, který tvůj preset použít",
+                    ) { navController.navigate(Routes.DETECTOR_ADVISOR) }
+                    HorizontalDivider()
+                    NavigationRow(
+                        "Moje detektory a presety",
+                        "Ulož si stroje, cívky a osvědčená nastavení",
+                    ) { navController.navigate(Routes.DETECTOR_PROFILES) }
                 }
             }
-            SettingsGroup("O aplikaci") {
-                NavigationRow("Pre-flight", "Kontrola před výjezdem: slunce, baterie, vrstvy") {
-                    navController.navigate(Routes.PREFLIGHT)
+            if (tab == 2) {
+                DataGroup(
+                    state = state,
+                    onExport = { viewModel.exportAll() },
+                    onImport = {
+                        importPicker.launch(
+                            arrayOf("application/zip", "application/octet-stream", "*/*"),
+                        )
+                    },
+                )
+            }
+            if (tab == 3) {
+                SettingsGroup("Záznam") {
+                    NavigationRow("Pochůzky (tracky)", "Seznam nahraných tras a export GPX") {
+                        navController.navigate(Routes.TRACKS)
+                    }
                 }
-                HorizontalDivider()
-                NavigationRow("O aplikaci a atribuce", "Zdroje dat, licence, právní minimum") {
-                    navController.navigate(Routes.ABOUT)
+                SettingsGroup("O aplikaci") {
+                    NavigationRow(
+                        "Pre-flight",
+                        "Kontrola před výjezdem: slunce, baterie, vrstvy",
+                    ) { navController.navigate(Routes.PREFLIGHT) }
+                    HorizontalDivider()
+                    NavigationRow("O aplikaci a atribuce", "Zdroje dat, licence, právní minimum") {
+                        navController.navigate(Routes.ABOUT)
+                    }
                 }
             }
         }

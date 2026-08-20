@@ -6,7 +6,6 @@ import cz.hh.detektormapy.data.entity.SearchedAreaEntity
 import cz.hh.detektormapy.location.Fix
 import cz.hh.detektormapy.location.FixQuality
 import cz.hh.detektormapy.map.LayerUiState
-import cz.hh.detektormapy.map.ProtectedAreaHit
 
 /** Which two-finger gesture the map is currently interpreting. */
 enum class MapMode {
@@ -41,17 +40,27 @@ data class MapUiState(
     val drawingPoints: List<Pair<Double, Double>> = emptyList(),
     val message: String? = null,
     val locationPermissionGranted: Boolean = false,
-    /** Non-null while the current position sits inside an ÚAN polygon (issue F4-3). */
-    val protectedArea: ProtectedAreaHit? = null,
     val geoJsonPayloads: Map<String, String> = emptyMap(),
     /** True while the user holds the layers button to peek at the modern map underneath. */
     val peeking: Boolean = false,
+    /** Overlay the on-map opacity strip controls; null falls back to the topmost visible one. */
+    val opacityTarget: String? = null,
+    val showFinds: Boolean = true,
+    val showPlaces: Boolean = true,
+    val showAreas: Boolean = true,
 ) {
     val overlayLayers: List<LayerUiState>
         get() = layers.filterNot { it.def.isBasemap }
 
     val basemapLayers: List<LayerUiState>
         get() = layers.filter { it.def.isBasemap }
+
+    /** The overlay whose opacity the on-map strip adjusts, or null when there is none. */
+    val opacityLayer: LayerUiState?
+        get() {
+            val candidates = overlayLayers.filter { it.visible && it.available && it.def.isRaster }
+            return candidates.firstOrNull { it.def.id == opacityTarget } ?: candidates.lastOrNull()
+        }
 
     val calibrationLayer: LayerUiState?
         get() = calibrationLayerId?.let { id -> layers.firstOrNull { it.def.id == id } }

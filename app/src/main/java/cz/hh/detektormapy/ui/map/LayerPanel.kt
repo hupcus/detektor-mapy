@@ -47,9 +47,16 @@ fun LayerPanel(
     onDismiss: () -> Unit,
     onToggle: (String, Boolean) -> Unit,
     onOpacity: (String, Float) -> Unit,
+    onOpacityCommitted: (String) -> Unit,
     onCalibrate: (String) -> Unit,
     onManageCalibrations: (String) -> Unit,
     onReload: () -> Unit,
+    showFinds: Boolean,
+    showPlaces: Boolean,
+    showAreas: Boolean,
+    onShowFinds: (Boolean) -> Unit,
+    onShowPlaces: (Boolean) -> Unit,
+    onShowAreas: (Boolean) -> Unit,
     onAddImageOverlay: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -77,13 +84,13 @@ fun LayerPanel(
                     SectionLabel("Podklad")
                 }
                 items(basemaps, key = { it.def.id }) { layer ->
-                    LayerRow(layer, onToggle, onOpacity, onCalibrate, onManageCalibrations)
+                    LayerRow(layer, onToggle, onOpacity, onOpacityCommitted, onCalibrate, onManageCalibrations)
                 }
                 item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
             }
             item { SectionLabel("Historické mapy a reliéf") }
             items(overlays, key = { it.def.id }) { layer ->
-                LayerRow(layer, onToggle, onOpacity, onCalibrate, onManageCalibrations)
+                LayerRow(layer, onToggle, onOpacity, onOpacityCommitted, onCalibrate, onManageCalibrations)
             }
             if (overlays.isEmpty()) {
                 item {
@@ -95,6 +102,17 @@ fun LayerPanel(
                     )
                 }
             }
+            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+            item { SectionLabel("Na mapě") }
+            item {
+                PinToggle("Nálezy", showFinds, onShowFinds)
+            }
+            item {
+                PinToggle("Místa", showPlaces, onShowPlaces)
+            }
+            item {
+                PinToggle("Prohledané zóny", showAreas, onShowAreas)
+            }
             item {
                 Row(
                     Modifier.padding(horizontal = 8.dp),
@@ -105,6 +123,20 @@ fun LayerPanel(
                 }
             }
         }
+    }
+}
+
+/** Simple labelled switch for the "what to draw on the map" section. */
+@Composable
+private fun PinToggle(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
 
@@ -123,6 +155,7 @@ private fun LayerRow(
     layer: LayerUiState,
     onToggle: (String, Boolean) -> Unit,
     onOpacity: (String, Float) -> Unit,
+    onOpacityCommitted: (String) -> Unit,
     onCalibrate: (String) -> Unit,
     onManageCalibrations: (String) -> Unit,
 ) {
@@ -171,6 +204,7 @@ private fun LayerRow(
                 Slider(
                     value = layer.opacity,
                     onValueChange = { onOpacity(layer.def.id, it) },
+                    onValueChangeFinished = { onOpacityCommitted(layer.def.id) },
                     valueRange = 0f..1f,
                     modifier = Modifier.weight(1f),
                 )

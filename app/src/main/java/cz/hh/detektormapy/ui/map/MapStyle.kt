@@ -19,12 +19,18 @@ object MapStyle {
     const val LAYER_TRACK = "app-track"
     const val LAYER_PLACES = "app-places"
     const val LAYER_FINDS = "app-finds"
+    const val LAYER_ACCURACY_FILL = "app-accuracy-fill"
+    const val LAYER_ACCURACY_LINE = "app-accuracy-line"
+    const val LAYER_LOCATION_DOT = "app-location-dot"
+    const val LAYER_LOCATION_HEADING = "app-location-heading"
 
     const val SOURCE_AREAS = "app-areas-src"
     const val SOURCE_UAN = "app-uan-src"
     const val SOURCE_TRACK = "app-track-src"
     const val SOURCE_PLACES = "app-places-src"
     const val SOURCE_FINDS = "app-finds-src"
+    const val SOURCE_ACCURACY = "app-accuracy-src"
+    const val SOURCE_LOCATION = "app-location-src"
 
     fun rasterSourceId(layerId: String) = "raster-src-$layerId"
 

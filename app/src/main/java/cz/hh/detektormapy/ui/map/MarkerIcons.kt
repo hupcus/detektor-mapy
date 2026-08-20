@@ -22,6 +22,7 @@ object MarkerIcons {
     const val FIND_PREFIX = "find-"
     const val PLACE_PREFIX = "place-"
     const val ICON_FAVORITE = "find-favorite"
+    const val ICON_HEADING = "location-heading"
 
     private const val SIZE = 96
     private const val PIN_HEIGHT = 120
@@ -38,6 +39,7 @@ object MarkerIcons {
             put(placeIconId(type), pin(colorOf(type), letterOf(type), density, diamond = true))
         }
         put(ICON_FAVORITE, pin(0xFFFFC107.toInt(), "★", density, diamond = false))
+        put(ICON_HEADING, headingArrow(density))
     }
 
     fun colorOf(category: FindCategory): Int = when (category) {
@@ -76,6 +78,39 @@ object MarkerIcons {
         PlaceType.ZAKAZ -> "!"
         PlaceType.SRAZ -> "S"
         PlaceType.PARKOVANI -> "P"
+    }
+
+    /**
+     * Cone showing which way the phone is pointing, drawn behind the position dot.
+     *
+     * A plain dot tells you where you are; the cone tells you which way you are facing, which
+     * is what actually lets you walk onto a spot marked on an 1840s map.
+     */
+    private fun headingArrow(density: Float): Bitmap {
+        val scale = density.coerceIn(1f, 3.5f)
+        val size = (60 * scale).toInt().coerceAtLeast(48)
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        val cx = size / 2f
+        val cy = size / 2f
+        val r = size / 2f
+
+        // Drawn around the centre of the bitmap, because the layer anchors the icon at its
+        // centre on the position dot -- the cone has to emanate from the dot, not float above it.
+        val cone = Path().apply {
+            moveTo(cx, cy - r * 0.95f)
+            lineTo(cx - r * 0.38f, cy - r * 0.10f)
+            lineTo(cx + r * 0.38f, cy - r * 0.10f)
+            close()
+        }
+        canvas.drawPath(
+            cone,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0xAA1E88E5.toInt()
+                style = Paint.Style.FILL
+            },
+        )
+        return bmp
     }
 
     private fun pin(color: Int, letter: String, density: Float, diamond: Boolean): Bitmap {

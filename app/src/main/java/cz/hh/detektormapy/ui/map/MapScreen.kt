@@ -204,14 +204,27 @@ fun MapScreen(navController: NavHostController, viewModel: MapViewModel = hiltVi
             val style = styleRef ?: return@LaunchedEffect
             controller?.applyPeek(style, state.layers, state.peeking)
         }
-        LaunchedEffect(state.finds, styleRef) {
-            styleRef?.let { controller?.updateFinds(it, state.finds) }
+        LaunchedEffect(state.finds, state.showFinds, styleRef) {
+            styleRef?.let {
+                controller?.updateFinds(it, if (state.showFinds) state.finds else emptyList())
+            }
         }
-        LaunchedEffect(state.places, styleRef) {
-            styleRef?.let { controller?.updatePlaces(it, state.places) }
+        LaunchedEffect(state.places, state.showPlaces, styleRef) {
+            styleRef?.let {
+                controller?.updatePlaces(it, if (state.showPlaces) state.places else emptyList())
+            }
         }
-        LaunchedEffect(state.areas, state.drawingPoints, styleRef) {
-            styleRef?.let { controller?.updateAreas(it, state.areas, state.drawingPoints) }
+        LaunchedEffect(state.areas, state.showAreas, state.drawingPoints, styleRef) {
+            styleRef?.let {
+                controller?.updateAreas(
+                    it,
+                    if (state.showAreas) state.areas else emptyList(),
+                    state.drawingPoints,
+                )
+            }
+        }
+        LaunchedEffect(state.fix, state.headingDeg, styleRef) {
+            styleRef?.let { controller?.updateLocation(it, state.fix, state.headingDeg) }
         }
         LaunchedEffect(state.trackPoints, styleRef) {
             styleRef?.let { controller?.updateTrack(it, state.trackPoints) }
@@ -307,13 +320,22 @@ fun MapScreen(navController: NavHostController, viewModel: MapViewModel = hiltVi
             )
         }
 
-        state.protectedArea?.let { hit ->
-            ProtectedAreaBanner(
-                hit = hit,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = if (state.navigateTarget != null) 72.dp else 8.dp),
-            )
+        // Opacity control on the map, not behind a dimming sheet.
+        state.opacityLayer?.let { layer ->
+            if (state.mode == MapMode.NAVIGATE && !showLayerPanel) {
+                OpacityStrip(
+                    layer = layer,
+                    canCycle = state.overlayLayers.count {
+                        it.visible && it.available && it.def.isRaster
+                    } > 1,
+                    onOpacityChange = { viewModel.setLayerOpacity(layer.def.id, it) },
+                    onOpacityCommitted = { viewModel.commitLayerOpacity(layer.def.id) },
+                    onCycleLayer = { viewModel.cycleOpacityTarget() },
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 12.dp, bottom = 12.dp),
+                )
+            }
         }
 
         SnackbarHost(
@@ -330,6 +352,7 @@ fun MapScreen(navController: NavHostController, viewModel: MapViewModel = hiltVi
             onDismiss = { showLayerPanel = false },
             onToggle = viewModel::setLayerVisible,
             onOpacity = viewModel::setLayerOpacity,
+            onOpacityCommitted = viewModel::commitLayerOpacity,
             onCalibrate = { layerId ->
                 showLayerPanel = false
                 viewModel.startCalibration(layerId)
@@ -339,6 +362,12 @@ fun MapScreen(navController: NavHostController, viewModel: MapViewModel = hiltVi
                 navController.navigate(Routes.calibrations(layerId))
             },
             onReload = { viewModel.reloadLayers() },
+            showFinds = state.showFinds,
+            showPlaces = state.showPlaces,
+            showAreas = state.showAreas,
+            onShowFinds = viewModel::setShowFinds,
+            onShowPlaces = viewModel::setShowPlaces,
+            onShowAreas = viewModel::setShowAreas,
             onAddImageOverlay = {
                 showLayerPanel = false
                 navController.navigate(Routes.IMAGE_OVERLAY)

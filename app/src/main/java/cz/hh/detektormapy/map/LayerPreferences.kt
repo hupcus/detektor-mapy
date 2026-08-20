@@ -27,12 +27,18 @@ class LayerPreferences @Inject constructor(@param:ApplicationContext private val
         val rotateWithCompass: Boolean = false,
         val followMode: Boolean = true,
         val keepScreenOn: Boolean = true,
+        val showFinds: Boolean = true,
+        val showPlaces: Boolean = true,
+        val showAreas: Boolean = true,
     )
 
     private val basemapKey = androidx.datastore.preferences.core.stringPreferencesKey("basemap")
     private val rotateKey = booleanPreferencesKey("rotate_with_compass")
     private val followKey = booleanPreferencesKey("follow_mode")
     private val keepScreenOnKey = booleanPreferencesKey("keep_screen_on")
+    private val showFindsKey = booleanPreferencesKey("show_finds")
+    private val showPlacesKey = booleanPreferencesKey("show_places")
+    private val showAreasKey = booleanPreferencesKey("show_areas")
 
     private fun visibleKey(id: String) = booleanPreferencesKey("vis_$id")
     private fun opacityKey(id: String) = floatPreferencesKey("op_$id")
@@ -68,6 +74,18 @@ class LayerPreferences @Inject constructor(@param:ApplicationContext private val
         context.layerDataStore.edit { it[keepScreenOnKey] = enabled }
     }
 
+    suspend fun setShowFinds(enabled: Boolean) {
+        context.layerDataStore.edit { it[showFindsKey] = enabled }
+    }
+
+    suspend fun setShowPlaces(enabled: Boolean) {
+        context.layerDataStore.edit { it[showPlacesKey] = enabled }
+    }
+
+    suspend fun setShowAreas(enabled: Boolean) {
+        context.layerDataStore.edit { it[showAreasKey] = enabled }
+    }
+
     private fun Preferences.toState(): State {
         val visible = mutableMapOf<String, Boolean>()
         val opacity = mutableMapOf<String, Float>()
@@ -88,6 +106,9 @@ class LayerPreferences @Inject constructor(@param:ApplicationContext private val
             rotateWithCompass = this[rotateKey] ?: false,
             followMode = this[followKey] ?: true,
             keepScreenOn = this[keepScreenOnKey] ?: true,
+            showFinds = this[showFindsKey] ?: true,
+            showPlaces = this[showPlacesKey] ?: true,
+            showAreas = this[showAreasKey] ?: true,
         )
     }
 }

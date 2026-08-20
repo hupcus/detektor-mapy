@@ -18,7 +18,6 @@ import cz.hh.detektormapy.location.FixQuality
 import cz.hh.detektormapy.location.LocationProvider
 import cz.hh.detektormapy.location.TrackRecordingService
 import cz.hh.detektormapy.map.LayerManager
-import cz.hh.detektormapy.map.ProtectedAreaHit
 import cz.hh.detektormapy.util.BBox
 import cz.hh.detektormapy.util.Geo
 import cz.hh.detektormapy.util.WebMercator
@@ -67,13 +66,24 @@ class MapViewModel @Inject constructor(
      * and a single shared slot would end up showing whichever of them happened to finish last.
      */
     private val calibrationLabels = MutableStateFlow<Map<String, String>>(emptyMap())
-    private val protectedAreaState = MutableStateFlow<ProtectedAreaHit?>(null)
 
     /**
      * Hold-to-peek. Deliberately NOT persisted: it is a momentary look, and routing it through
      * DataStore would mean a disk write every time the user glances at the modern map.
      */
     private val peekState = MutableStateFlow(false)
+
+    /**
+     * Opacity while the user is dragging a slider.
+     *
+     * The persisted value lives in DataStore, which is a disk write — dragging a slider would
+     * mean roughly sixty of them per second. The live value is applied to the map immediately
+     * and written through only when the drag ends.
+     */
+    private val liveOpacity = MutableStateFlow<Map<String, Float>>(emptyMap())
+
+    /** Which overlay the on-map opacity strip controls; null means the topmost visible one. */
+    private val opacityTargetState = MutableStateFlow<String?>(null)
 
     /**
      * Flipped by the map screen once the runtime permission dialog comes back. The ViewModel is
@@ -112,11 +122,37 @@ class MapViewModel @Inject constructor(
 
     fun setRotateWithCompass(enabled: Boolean) = layerManager.setRotateWithCompass(enabled)
 
+    fun setShowFinds(enabled: Boolean) = layerManager.setShowFinds(enabled)
+
+    fun setShowPlaces(enabled: Boolean) = layerManager.setShowPlaces(enabled)
+
+    fun setShowAreas(enabled: Boolean) = layerManager.setShowAreas(enabled)
+
     // --- layers ----------------------------------------------------------------------
 
     fun setLayerVisible(layerId: String, visible: Boolean) = layerManager.setVisible(layerId, visible)
 
-    fun setLayerOpacity(layerId: String, opacity: Float) = layerManager.setOpacity(layerId, opacity)
+    /** Live update while dragging: applied to the map, not written to disk. */
+    fun setLayerOpacity(layerId: String, opacity: Float) {
+        liveOpacity.value = liveOpacity.value + (layerId to opacity.coerceIn(0f, 1f))
+    }
+
+    /** Called when the drag ends; this is the only place the value reaches DataStore. */
+    fun commitLayerOpacity(layerId: String) {
+        val value = liveOpacity.value[layerId] ?: return
+        layerManager.setOpacity(layerId, value)
+    }
+
+    /** Cycles the on-map strip through the visible overlays. */
+    fun cycleOpacityTarget() {
+        val candidates = state.value.overlayLayers
+            .filter { it.visible && it.available && it.def.isRaster }
+            .map { it.def.id }
+        if (candidates.size < 2) return
+        val current = opacityTargetState.value
+        val index = candidates.indexOf(current)
+        opacityTargetState.value = candidates[(index + 1) % candidates.size]
+    }
 
     fun moveLayer(layerId: String, newOrder: Int) = layerManager.setOrder(layerId, newOrder)
 
@@ -320,10 +356,7 @@ class MapViewModel @Inject constructor(
                 .flatMapLatest { granted ->
                     if (granted) locationProvider.fixes() else kotlinx.coroutines.flow.emptyFlow()
                 }
-                .collect { fix ->
-                    fixState.value = fix
-                    updateProtectedArea(fix)
-                }
+                .collect { fix -> fixState.value = fix }
         }
         refreshLastKnown()
     }
@@ -335,38 +368,7 @@ class MapViewModel @Inject constructor(
     }
 
     private fun refreshLastKnown() {
-        val known = locationProvider.lastKnown()
-        if (known != null) {
-            fixState.value = known
-            updateProtectedArea(known)
-        }
-    }
-
-    /**
-     * Recomputes the ÚAN warning. Called per fix because the whole point is to notice the
-     * moment the user walks across the boundary, not when they next open a menu.
-     */
-    private fun updateProtectedArea(fix: Fix?) {
-        if (fix == null) {
-            protectedAreaState.value = null
-            return
-        }
-        val hit = layerManager.protectedAreaAt(fix.lat, fix.lon)
-        val previous = protectedAreaState.value
-
-        // Always refresh so the distance counts down live, but only shout when the situation
-        // actually changes -- a snackbar on every GPS fix would be unusable.
-        protectedAreaState.value = hit
-        val crossedInside = hit != null && hit.isInside && previous?.isInside != true
-        val newArea = hit != null && !hit.isInside &&
-            (previous == null || previous.category != hit.category || previous.name != hit.name)
-        when {
-            crossedInside -> messageState.value = "Pozor: stojíš v ${hit.category}"
-
-            newArea ->
-                messageState.value =
-                    "Blížíš se k ${hit.category} (${hit.distanceM.roundToInt()} m)"
-        }
+        locationProvider.lastKnown()?.let { fixState.value = it }
     }
 
     /** Opens the waypoint the user picked in the "Místa" list (deep link via savedStateHandle). */
@@ -424,10 +426,10 @@ class MapViewModel @Inject constructor(
             drawingState,
             navigateTargetState,
             messageState,
-            protectedAreaState,
             peekState,
-        ) { drawing, target, message, protected, peeking ->
-            InteractionSnapshot(drawing, target, message, protected, peeking)
+            opacityTargetState,
+        ) { drawing, target, message, peeking, opacityTarget ->
+            InteractionSnapshot(drawing, target, message, peeking, opacityTarget)
         }
 
         val locationSnapshot = combine(fixState, headingState) { fix, heading ->
@@ -443,6 +445,7 @@ class MapViewModel @Inject constructor(
             interaction,
             locationSnapshot,
             layerManager.geoJson,
+            liveOpacity,
         ) { values ->
             @Suppress("UNCHECKED_CAST")
             val layers = values[0] as List<cz.hh.detektormapy.map.LayerUiState>
@@ -464,14 +467,26 @@ class MapViewModel @Inject constructor(
             @Suppress("UNCHECKED_CAST")
             val geoJsonValue = values[7] as Map<String, String>
 
+            @Suppress("UNCHECKED_CAST")
+            val liveOpacityValue = values[8] as Map<String, Float>
+
             MapUiState(
-                layers = layers,
+                // The live drag value wins over the persisted one until the drag ends, so the
+                // map and the slider never disagree mid-gesture.
+                layers = layers.map { layer ->
+                    liveOpacityValue[layer.def.id]
+                        ?.let { layer.copy(opacity = it) }
+                        ?: layer
+                },
                 fix = locationValue.fix,
                 fixQuality = locationValue.quality,
                 headingDeg = locationValue.heading,
                 followMode = settings.followMode,
                 rotateWithCompass = settings.rotateWithCompass,
                 keepScreenOn = settings.keepScreenOn,
+                showFinds = settings.showFinds,
+                showPlaces = settings.showPlaces,
+                showAreas = settings.showAreas,
                 mode = calibrationValue.mode,
                 calibrationLayerId = calibrationValue.layerId,
                 calibrationDirty = calibrationValue.dirty,
@@ -485,9 +500,9 @@ class MapViewModel @Inject constructor(
                 drawingPoints = interactionValue.drawing,
                 message = interactionValue.message,
                 locationPermissionGranted = locationProvider.hasPermission(),
-                protectedArea = interactionValue.protectedArea,
                 geoJsonPayloads = geoJsonValue,
                 peeking = interactionValue.peeking,
+                opacityTarget = interactionValue.opacityTarget,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MapUiState())
     }
@@ -514,8 +529,8 @@ class MapViewModel @Inject constructor(
         val drawing: List<Pair<Double, Double>>,
         val target: PlaceEntity?,
         val message: String?,
-        val protectedArea: ProtectedAreaHit?,
         val peeking: Boolean,
+        val opacityTarget: String?,
     )
 
     private data class LocationSnapshot(val fix: Fix?, val quality: FixQuality, val heading: Float?)

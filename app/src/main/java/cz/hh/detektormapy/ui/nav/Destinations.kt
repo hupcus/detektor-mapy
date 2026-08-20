@@ -26,6 +26,8 @@ object Routes {
     const val PREFLIGHT = "preflight"
     const val ABOUT = "about"
     const val IMAGE_OVERLAY = "image-overlay"
+    const val DETECTOR_ADVISOR = "detector/advisor"
+    const val DETECTOR_PROFILES = "detector/profiles"
 
     fun findDetail(id: Long) = "find/$id"
     fun placeDetail(id: Long) = "place/$id"

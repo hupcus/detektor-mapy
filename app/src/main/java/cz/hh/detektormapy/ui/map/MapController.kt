@@ -4,6 +4,7 @@ import android.util.Log
 import cz.hh.detektormapy.data.entity.FindEntity
 import cz.hh.detektormapy.data.entity.PlaceEntity
 import cz.hh.detektormapy.data.entity.SearchedAreaEntity
+import cz.hh.detektormapy.location.Fix
 import cz.hh.detektormapy.map.LayerKind
 import cz.hh.detektormapy.map.LayerUiState
 import org.maplibre.android.maps.MapLibreMap
@@ -225,6 +226,58 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
         setSourceData(style, MapStyle.SOURCE_AREAS, features)
     }
 
+    /**
+     * Draws where the user is standing: an accuracy circle, a dot, and a heading cone.
+     *
+     * The accuracy ring is a real polygon in metres rather than a `CircleLayer`, whose radius is
+     * in screen pixels — a pixel radius would claim wildly different accuracy depending on zoom.
+     * Getting this honest matters: the whole point is walking onto a spot marked on an old map,
+     * and the ring is what tells you how much to trust the dot.
+     */
+    fun updateLocation(style: Style, fix: Fix?, headingDeg: Float?) {
+        if (!overlaysReady) return
+        if (fix == null) {
+            setSourceData(style, MapStyle.SOURCE_ACCURACY, emptyList())
+            setSourceData(style, MapStyle.SOURCE_LOCATION, emptyList())
+            return
+        }
+
+        val accuracy = fix.accuracyM?.toDouble() ?: 0.0
+        val ring = if (accuracy > 1.0) {
+            listOf(circleFeature(fix.lat, fix.lon, accuracy))
+        } else {
+            emptyList()
+        }
+        setSourceData(style, MapStyle.SOURCE_ACCURACY, ring)
+
+        val point = Feature.fromGeometry(Point.fromLngLat(fix.lon, fix.lat)).apply {
+            addNumberProperty(PROP_HEADING, headingDeg ?: fix.bearingDeg ?: 0f)
+            addStringProperty(PROP_ICON, MarkerIcons.ICON_HEADING)
+            addStringProperty(PROP_HAS_HEADING, (headingDeg != null || fix.bearingDeg != null).toString())
+        }
+        setSourceData(style, MapStyle.SOURCE_LOCATION, listOf(point))
+
+        (style.getLayer(MapStyle.LAYER_LOCATION_HEADING) as? SymbolLayer)?.setProperties(
+            PropertyFactory.iconRotate((headingDeg ?: fix.bearingDeg ?: 0f)),
+            PropertyFactory.iconOpacity(if (headingDeg != null || fix.bearingDeg != null) 1f else 0f),
+        )
+    }
+
+    /** Polygon approximating a circle of [radiusMeters] around a position. */
+    private fun circleFeature(lat: Double, lon: Double, radiusMeters: Double): Feature {
+        val steps = 48
+        val latPerM = 1.0 / 111_132.0
+        val lonPerM = 1.0 / (111_320.0 * kotlin.math.cos(Math.toRadians(lat)).coerceAtLeast(1e-6))
+        val points = (0..steps).map { i ->
+            val a = 2.0 * Math.PI * i / steps
+            Point.fromLngLat(
+                lon + kotlin.math.cos(a) * radiusMeters * lonPerM,
+                lat + kotlin.math.sin(a) * radiusMeters * latPerM,
+            )
+        }
+        return Feature.fromGeometry(Polygon.fromLngLats(listOf(points)))
+    }
+
     fun updateTrack(style: Style, points: List<Pair<Double, Double>>) {
         if (!overlaysReady) return
         val source = style.getSourceAs<GeoJsonSource>(MapStyle.SOURCE_TRACK) ?: return
@@ -256,6 +309,8 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
         style.addSource(GeoJsonSource(MapStyle.SOURCE_TRACK))
         style.addSource(GeoJsonSource(MapStyle.SOURCE_PLACES))
         style.addSource(GeoJsonSource(MapStyle.SOURCE_FINDS))
+        style.addSource(GeoJsonSource(MapStyle.SOURCE_ACCURACY))
+        style.addSource(GeoJsonSource(MapStyle.SOURCE_LOCATION))
 
         style.addLayer(
             FillLayer(MapStyle.LAYER_AREAS_FILL, MapStyle.SOURCE_AREAS).withProperties(
@@ -293,6 +348,21 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
                 PropertyFactory.iconSize(1f),
             ),
         )
+        // Accuracy ring sits under everything else; the dot and cone go on top of all pins so
+        // the user can always see themselves.
+        style.addLayer(
+            FillLayer(MapStyle.LAYER_ACCURACY_FILL, MapStyle.SOURCE_ACCURACY).withProperties(
+                PropertyFactory.fillColor(LOCATION_COLOR),
+                PropertyFactory.fillOpacity(0.12f),
+            ),
+        )
+        style.addLayer(
+            LineLayer(MapStyle.LAYER_ACCURACY_LINE, MapStyle.SOURCE_ACCURACY).withProperties(
+                PropertyFactory.lineColor(LOCATION_COLOR),
+                PropertyFactory.lineWidth(1.5f),
+                PropertyFactory.lineOpacity(0.5f),
+            ),
+        )
         style.addLayer(
             SymbolLayer(MapStyle.LAYER_FINDS, MapStyle.SOURCE_FINDS).withProperties(
                 PropertyFactory.iconImage("{$PROP_ICON}"),
@@ -300,6 +370,24 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
                 PropertyFactory.iconIgnorePlacement(true),
                 PropertyFactory.iconAnchor(Property.ICON_ANCHOR_BOTTOM),
                 PropertyFactory.iconSize(1f),
+            ),
+        )
+        style.addLayer(
+            SymbolLayer(MapStyle.LAYER_LOCATION_HEADING, MapStyle.SOURCE_LOCATION).withProperties(
+                PropertyFactory.iconImage(MarkerIcons.ICON_HEADING),
+                PropertyFactory.iconAllowOverlap(true),
+                PropertyFactory.iconIgnorePlacement(true),
+                PropertyFactory.iconRotationAlignment(Property.ICON_ROTATION_ALIGNMENT_MAP),
+                PropertyFactory.iconAnchor(Property.ICON_ANCHOR_CENTER),
+            ),
+        )
+        style.addLayer(
+            CircleLayer(MapStyle.LAYER_LOCATION_DOT, MapStyle.SOURCE_LOCATION).withProperties(
+                PropertyFactory.circleRadius(7f),
+                PropertyFactory.circleColor(LOCATION_COLOR),
+                PropertyFactory.circleStrokeColor(0xFFFFFFFF.toInt()),
+                PropertyFactory.circleStrokeWidth(2.5f),
+                PropertyFactory.circlePitchAlignment(Property.CIRCLE_PITCH_ALIGNMENT_MAP),
             ),
         )
     }
@@ -318,6 +406,9 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
         const val AREA_FILL_COLOR = 0xFF4A6B3F.toInt()
         const val AREA_LINE_COLOR = 0xFF2E3B2C.toInt()
         const val TRACK_COLOR = 0xFFB3261E.toInt()
+        const val LOCATION_COLOR = 0xFF1E88E5.toInt()
+        const val PROP_HEADING = "heading"
+        const val PROP_HAS_HEADING = "hasHeading"
         const val UAN_FILL_COLOR = 0xFFB3261E.toInt()
         const val UAN_LINE_COLOR = 0xFF7F1D1D.toInt()
 
