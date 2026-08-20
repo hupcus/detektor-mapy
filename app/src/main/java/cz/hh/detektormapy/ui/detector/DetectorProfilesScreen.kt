@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -104,7 +105,10 @@ fun DetectorProfilesScreen(navController: NavHostController) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         if (state.isEmpty) {
-            EmptyLibrary(Modifier.padding(padding))
+            EmptyLibrary(
+                modifier = Modifier.padding(padding),
+                onSeedLegend = viewModel::seedNoktaLegend,
+            )
         } else {
             LazyColumn(
                 modifier = Modifier
@@ -113,6 +117,13 @@ fun DetectorProfilesScreen(navController: NavHostController) {
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                item {
+                    // Offered even when the library is not empty: the presets are additive and
+                    // seeding is idempotent, so there is no way to make a mess with it.
+                    TextButton(onClick = viewModel::seedNoktaLegend) {
+                        Text("Načíst presety pro Nokta The Legend")
+                    }
+                }
                 items(state.library, key = { it.detector.id }) { entry ->
                     DetectorCard(
                         entry = entry,
@@ -235,7 +246,7 @@ fun DetectorProfilesScreen(navController: NavHostController) {
 }
 
 @Composable
-private fun EmptyLibrary(modifier: Modifier = Modifier) {
+private fun EmptyLibrary(modifier: Modifier = Modifier, onSeedLegend: () -> Unit) {
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -262,6 +273,13 @@ private fun EmptyLibrary(modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        HorizontalDivider()
+        Text(
+            text = "Máš Nokta The Legend? Načti si rovnou svoje presety pro les, louku a pole " +
+                "ve variantě za sucha i za mokra.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Button(onClick = onSeedLegend) { Text("Načíst presety pro Nokta The Legend") }
     }
 }
 

@@ -55,3 +55,9 @@ end_of_line = crlf
 
 [*.{properties,toml}]
 indent_size = 4
+
+# Transcribed data, not code: NoktaLegendPresets.kt carries the owner's preset document
+# verbatim (docs/nokta-legend-presety.md). Reflowing Czech sentences and bullet lists to fit a
+# code-style column limit would only make the transcription harder to diff against its source.
+[**/detector/NoktaLegendPresets.kt]
+ktlint_standard_max-line-length = disabled

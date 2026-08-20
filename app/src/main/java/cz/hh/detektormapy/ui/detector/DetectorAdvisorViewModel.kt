@@ -8,7 +8,6 @@ import cz.hh.detektormapy.data.model.SoilCondition
 import cz.hh.detektormapy.data.model.Terrain
 import cz.hh.detektormapy.data.relation.DetectorWithPresets
 import cz.hh.detektormapy.data.repository.DetectorRepository
-import cz.hh.detektormapy.detector.DetectorAdvice
 import cz.hh.detektormapy.detector.PresetMatch
 import cz.hh.detektormapy.detector.PresetRanking
 import cz.hh.detektormapy.detector.SoilEstimate
@@ -56,10 +55,6 @@ data class DetectorAdvisorUiState(
     val ranked: List<PresetMatch> = PresetRanking.rank(library, terrain, soil)
 
     val hasPresets: Boolean = library.any { it.presets.isNotEmpty() }
-
-    val terrainTips: List<String> = DetectorAdvice.forTerrain(terrain)
-
-    val soilTips: List<String> = soil?.let { DetectorAdvice.forSoil(it) } ?: emptyList()
 }
 
 /**

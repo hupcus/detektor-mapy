@@ -100,4 +100,19 @@ class DetectorProfilesViewModel @Inject constructor(private val repository: Dete
     fun consumeMessage() {
         messageState.value = null
     }
+
+    /**
+     * Installs the bundled Nokta Legend presets. Idempotent: pressing it twice does not create
+     * a second Legend.
+     */
+    fun seedNoktaLegend() {
+        viewModelScope.launch {
+            val inserted = repository.seedNoktaLegend(System.currentTimeMillis())
+            messageState.value = if (inserted < 0) {
+                "Nokta The Legend už v knihovně je."
+            } else {
+                "Přidáno $inserted presetů pro Nokta The Legend."
+            }
+        }
+    }
 }

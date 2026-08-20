@@ -232,3 +232,17 @@ Pořadí zadané uživatelem. Odškrtávat průběžně.
       Schémata se kvůli `MigrationTestHelper` přidávají do assetů **jen debug** varianty.
 - [x] **Přeorganizovat Nastavení** do záložek/podmenu — teď je to jedna nekonečná nudle.
 - [x] **Vydat novou verzi** (v0.2.0) — až bude výše hotové.
+
+## Presety Nokta The Legend (v0.2.1)
+Zdroj pravdy je `docs/nokta-legend-presety.md` — dokument majitele, ne tovární nastavení.
+Z něj je vygenerovaný `detector/NoktaLegendPresets.kt` (6 profilů: les/louka/pole × běžné/mokro).
+
+**Když se dokument změní, přegeneruj Kotlin, needituj ho ručně** — jinak se obojí rozejde.
+Generátor parsuje nadpisy `# PROFIL n – NÁZEV` a sekce `## Nastavení` / `## Proč` /
+`## Doladění v terénu`; vodorovné čáry `---` je nutné vyhodit, jinak se propíšou jako odrážka.
+
+Soubor má v `.editorconfig` vypnuté `max-line-length` — je to přepsaná datová tabulka, ne kód,
+a lámat české věty kvůli sloupci 120 by jen znesnadnilo porovnání se zdrojem.
+
+Nasazení do knihovny dělá `DetectorRepository.seedNoktaLegend()`, které je **idempotentní podle
+jména detektoru**, takže tlačítko jde zmáčknout opakovaně bez následků.

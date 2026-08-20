@@ -9,7 +9,22 @@ Typy změn: `Přidáno`, `Změněno`, `Zastaralé`, `Odebráno`, `Opraveno`, `Be
 
 ## [Nezveřejněno]
 
-Nic — poslední změny jsou v 0.2.0.
+Nic — poslední změny jsou v 0.2.1.
+
+## [0.2.1] — 2026-08-20
+
+### Přidáno
+- **Presety pro Nokta The Legend** — šest hotových profilů pro les, louku a pole, každý ve
+  variantě za běžných podmínek a za mokra, včetně kompletního nastavení (frekvence, Recovery,
+  IF, St, dt, AG, tóny), zdůvodnění a doladění v terénu. Načtou se jedním tlačítkem a jsou to
+  **vlastní ověřená nastavení majitele**, přepsaná z `docs/nokta-legend-presety.md` — ne tovární
+  presety Nokty a ne nic, co by si aplikace vymyslela.
+- **Startovací rutina na nové lokalitě** v rádci: Noise Cancel, Ground Balance, projít 20–30 m
+  a teprve pak sahat na čísla.
+
+### Odebráno
+- **Obecná doporučení** v rádci. Nahradily je konkrétní presety pro reálný stroj, což je přesně
+  ta věc, kterou obecné rady nikdy nedokázaly nahradit.
 
 ## [0.2.0] — 2026-08-20
 

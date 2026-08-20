@@ -38,7 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import cz.hh.detektormapy.data.model.SoilCondition
 import cz.hh.detektormapy.data.model.Terrain
-import cz.hh.detektormapy.detector.DetectorAdvice
+import cz.hh.detektormapy.detector.NoktaLegendPresets
 import cz.hh.detektormapy.detector.PresetMatch
 import cz.hh.detektormapy.detector.PresetRanking
 import cz.hh.detektormapy.ui.nav.Routes
@@ -94,7 +94,7 @@ fun DetectorAdvisorScreen(navController: NavHostController) {
                 state = state,
                 onOpenProfiles = { navController.navigate(Routes.DETECTOR_PROFILES) },
             )
-            GeneralAdviceCard(state = state)
+            StartupRoutineCard()
         }
     }
 }
@@ -249,22 +249,22 @@ private fun PresetMatchRow(match: PresetMatch) {
     }
 }
 
+/**
+ * The routine that comes before any preset: noise cancel, ground balance, walk a bit, and only
+ * then start touching numbers. It is the part people skip and then blame the settings for.
+ */
 @Composable
-private fun GeneralAdviceCard(state: DetectorAdvisorUiState) {
-    AdvisorCard("Obecná doporučení") {
+private fun StartupRoutineCard() {
+    AdvisorCard("Než začneš na nové lokalitě") {
+        NoktaLegendPresets.STARTUP_ROUTINE.forEachIndexed { index, step ->
+            Text("${index + 1}. $step", style = MaterialTheme.typography.bodyMedium)
+        }
         Text(
-            text = DetectorAdvice.DISCLAIMER,
+            text = "Nehonit maximální citlivost. Klidný detektor je v reálné půdě užitečnější " +
+                "než nestabilní na maximu.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(state.terrain.label, style = MaterialTheme.typography.labelLarge)
-        state.terrainTips.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
-        val soil = state.soil
-        if (soil != null) {
-            HorizontalDivider()
-            Text(soil.label, style = MaterialTheme.typography.labelLarge)
-            state.soilTips.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
-        }
     }
 }
 

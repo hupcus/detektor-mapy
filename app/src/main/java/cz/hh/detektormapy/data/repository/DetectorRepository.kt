@@ -4,6 +4,7 @@ import cz.hh.detektormapy.data.dao.DetectorDao
 import cz.hh.detektormapy.data.entity.DetectorEntity
 import cz.hh.detektormapy.data.entity.DetectorPresetEntity
 import cz.hh.detektormapy.data.relation.DetectorWithPresets
+import cz.hh.detektormapy.detector.NoktaLegendPresets
 import kotlinx.coroutines.flow.Flow
 
 /** The user's own machines and the settings they wrote down for them. */
@@ -45,4 +46,47 @@ class DetectorRepository(private val detectorDao: DetectorDao) {
     suspend fun countDetectors(): Int = detectorDao.countDetectors()
 
     suspend fun countPresets(): Int = detectorDao.countPresets()
+
+    /**
+     * Installs the owner's Nokta Legend presets.
+     *
+     * Idempotent by detector name: running it twice does not create a second Legend, so the
+     * button is safe to press when unsure whether it was already used.
+     *
+     * @return number of presets inserted, or -1 when the detector already existed
+     */
+    suspend fun seedNoktaLegend(nowMillis: Long): Int {
+        val existing = detectorDao.getAllDetectors()
+            .firstOrNull { it.name == NoktaLegendPresets.DETECTOR_NAME }
+        if (existing != null) return -1
+
+        val detectorId = addDetector(
+            DetectorEntity(
+                name = NoktaLegendPresets.DETECTOR_NAME,
+                brand = NoktaLegendPresets.BRAND,
+                model = NoktaLegendPresets.MODEL,
+                coil = NoktaLegendPresets.COIL,
+                notes = NoktaLegendPresets.DETECTOR_NOTES,
+                createdAt = nowMillis,
+                isDefault = detectorDao.countDetectors() == 0,
+            ),
+        )
+        NoktaLegendPresets.presets.forEachIndexed { index, seed ->
+            detectorDao.insertPreset(
+                DetectorPresetEntity(
+                    detectorId = detectorId,
+                    name = seed.name,
+                    terrain = seed.terrain,
+                    soil = seed.soil,
+                    notes = seed.toNotes(),
+                    sensitivity = seed.sensitivity,
+                    groundBalance = seed.groundBalance,
+                    discrimination = seed.discrimination,
+                    // Distinct timestamps keep externalId unique across the batch.
+                    createdAt = nowMillis + index,
+                ),
+            )
+        }
+        return NoktaLegendPresets.presets.size
+    }
 }
