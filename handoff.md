@@ -117,3 +117,58 @@ aplikace si to nemůže dovolit, takže se špendlíky vykreslí na `Bitmap` a r
 - **2026-08-20** `targetSdk 36` blokuje cleartext HTTP, takže MapLibre nedosáhl na vlastní
   tile server na `127.0.0.1`. Řešeno `network_security_config.xml` s výjimkou **jen** pro
   loopback; zbytek sítě má vynucené TLS.
+
+## Panel k prolínání vrstev (2026-08-20) — závěry
+
+Tři nezávislá stanoviska (UX, MapLibre technika, kritik s rešerší). Shodli se, a to
+proti původnímu zadání.
+
+**Swipe závěs a lupa jsou vetované, ne odložené.**
+- Měření: Lobo/Pietriga/Appert, CHI 2015 — na *přesně této* úloze (ortofoto vs. mapa,
+  hledání změn) vyšel Translucent Overlay nejlépe a **Swipe špatně**, s doporučením
+  jeho používání přehodnotit.
+- Technicky: MapLibre nemá pro `RasterLayer` žádný clip ani masku (ověřeno javapem nad
+  11.11.0: žádný `setFilter`, žádný `clip` typ vrstvy, výrazy neznají souřadnice
+  obrazovky, `Style` nemá `moveLayer`). Kanonická implementace = **dvě instance MapView**
+  → dva GL kontexty, dvojí pyramida dlaždic, dvojí baterie.
+- Ergonomicky: dělítko se tahá druhou rukou, kterou drží detektor.
+
+**Radiální menu: nestavět.** Rozhodující argument není dosah palce, ale že *do radiály
+nedáš slider průhlednosti* — cesta by byla radiála → panel → slider, tedy tři úrovně
+místo dvou. Rodek je vlastní důkaz: „ZOBRAZIT" na liště a „VIEW" v oblouku se stejnou
+ikonou oka = rozpadlá hierarchie, do které radiála spadne, jakmile položek přeteče.
+
+**Skutečná vada, kterou máme:** `LayerPanel` je `ModalBottomSheet` se scrimem, takže
+*nevidíš efekt slideru, kterým zrovna hýbeš*. Locus má na tohle request s 20 hlasy a
+v Locus Map 4 to přepracoval.
+
+**Doporučené pořadí prací:**
+1. Peek — podržení tlačítka Vrstvy zprůhlední overlay, puštění vrátí. ~15 řádků.
+2. Nemodální pruh s posuvníkem na mapě místo sheetu se scrimem.
+3. Až potom případně plný „Prolínač" s detenty a letopočty.
+
+**Dvě tvrdá technická omezení, která musí každá implementace respektovat:**
+- Prolínání smí sahat **výhradně na `rasterOpacity`**, nikdy na viditelnost vrstvy —
+  `syncRasterLayers` při vypnutí odstraní layer i source, takže návrat = refetch celého
+  výřezu, a `LocalTileServer` posílá `Cache-Control: no-store`. Pro peek je naopak
+  `rasterOpacity(0f)` správně a je zadarmo (paint property, jen GPU).
+- Prolínání **nesmí** téct přes `LayerPreferences`/DataStore — při tažení by to bylo
+  ~60 zápisů na disk za sekundu. Potřebuje vlastní netrvalý stav ve `MapViewModel`,
+  který se s uloženou opacity jen násobí.
+
+**Známé chyby k opravě, až se bude sahat na vrstvy:**
+- `MapController.syncRasterLayers` počítá kotvu pořadí z katalogového `def.order`
+  a ignoruje uživatelský override z `LayerPreferences`.
+- `MapScreen` má prázdný `onDispose` u `DisposableEffect(mapView)` → listenery mapy se
+  neodregistrovávají.
+- `nearest()` v `PolygonIndex` je lineární sken. Pro kraj v pohodě; pro ÚAN celé ČR by
+  to byl sken při každém fixu (12×/min při adaptivní kadenci) — pak chce prostorový index.
+
+## Převzato z konkurence (Rodek / Metal Detecting Hub)
+- **Varování při přiblížení k chráněné zóně** — hotovo, `APPROACH_WARNING_M = 250`.
+  Jsme na tom líp než oni: jejich je kartička na pre-flightu, naše je živý banner na mapě.
+- **Vlhkost půdy** do pre-flightu — ověřeno, že open-meteo (už ho voláme) vrací
+  `soil_moisture_3_to_9cm` a `past_days=3` dá „nedávno". Jeden parametr navíc v URL.
+  Formulovat jako orientaci, ne predikci hloubky: vlhká málo mineralizovaná půda hloubce
+  pomáhá, nasycená a mineralizovaná ji sráží.
+- **„Tvůj lov: 2. na tomto místě"** — jeden dotaz nad Room, nejlepší poměr hodnota/práce.
