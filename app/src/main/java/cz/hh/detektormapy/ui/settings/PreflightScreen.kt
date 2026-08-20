@@ -134,6 +134,15 @@ fun PreflightScreen(navController: NavHostController) {
                             "Vítr",
                             weather.windKmh?.let { String.format(CS_LOCALE, "%.0f km/h", it) } ?: "—",
                         )
+                        InfoRow("Půda (odhad modelu)", state.soil?.label ?: "—")
+                        if (state.soil != null) {
+                            Text(
+                                text = "Orientační odhad z ~11km meteo mřížky, ne měření pole. " +
+                                    "Co s tím v nastavení detektoru, řekne Rádce.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }

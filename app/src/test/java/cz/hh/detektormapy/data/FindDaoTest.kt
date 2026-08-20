@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import cz.hh.detektormapy.data.dao.FindDao
 import cz.hh.detektormapy.data.dao.FindPhotoDao
 import cz.hh.detektormapy.data.model.FindCategory
+import cz.hh.detektormapy.data.repository.FindsRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -244,5 +245,22 @@ class FindDaoTest {
         db.openHelper.writableDatabase.execSQL("UPDATE finds SET category = 'METEORIT' WHERE id = $id")
 
         assertThat(findDao.getById(id)?.category).isEqualTo(FindCategory.OSTATNI)
+    }
+
+    @Test
+    fun `countNear counts by real distance, not by the bbox corners`() = runTest {
+        val repository = FindsRepository(findDao, photoDao)
+        // At lat 50.5 one degree of latitude is ~111 km, so 0.001° ~ 111 m.
+        val lat = 50.5123
+        val lon = 16.0116
+        findDao.insert(TestData.find(lat = lat, lon = lon, title = "přesně tady"))
+        findDao.insert(TestData.find(lat = lat + 0.0009, lon = lon, title = "100 m severně"))
+        // ~140 m severně i východně = ~198 m diagonálně: uvnitř bboxu, vně kruhu 150 m.
+        findDao.insert(TestData.find(lat = lat + 0.00126, lon = lon + 0.00198, title = "roh bboxu"))
+        findDao.insert(TestData.find(lat = lat + 0.01, lon = lon, title = "kilometr daleko"))
+
+        assertThat(repository.countNear(lat, lon)).isEqualTo(2)
+        assertThat(repository.countNear(lat + 0.01, lon)).isEqualTo(1)
+        assertThat(repository.countNear(51.0, 15.0)).isEqualTo(0)
     }
 }

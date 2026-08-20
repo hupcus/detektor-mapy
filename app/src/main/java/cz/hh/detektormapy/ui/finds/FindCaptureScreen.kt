@@ -447,6 +447,14 @@ private fun CaptureForm(
                 )
             }
 
+            state.huntRankLabel?.let { label ->
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
+            }
+
             CategoryPicker(selected = state.category, onSelect = onCategory)
 
             Row(

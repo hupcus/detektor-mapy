@@ -7,6 +7,23 @@ projekt používá [sémantické verzování](https://semver.org/lang/cs/).
 
 Typy změn: `Přidáno`, `Změněno`, `Zastaralé`, `Odebráno`, `Opraveno`, `Bezpečnost`.
 
+## [Nezveřejněno]
+
+### Přidáno
+- **„Tvůj lov: N. na tomto místě"** — formulář nového nálezu ukazuje, kolikátý
+  nález to v okruhu 150 m je („První nález na tomto místě" pro panenské místo).
+  Počet se přepočítá, až když se člověk reálně přesune (30 m), ne při každém
+  GPS fixu.
+- **Vlhkost půdy v pre-flightu** — karta Počasí nově ukazuje odhad stavu půdy
+  (sucho/vlhko/mokro) ze stejného modelu jako Rádce, s poctivou poznámkou, že
+  jde o ~11km mřížku, ne o měření pole.
+
+### Opraveno
+- Pořadí překryvných vrstev na mapě nyní respektuje uživatelské přeuspořádání
+  (dřív se bralo jen pevné pořadí z katalogu).
+- Posluchače mapy (klik, dlouhý stisk, kamera) se při opuštění obrazovky
+  odregistrovávají — dřív zůstávaly viset na mrtvé obrazovce.
+
 ## [0.3.0] — 2026-08-20
 
 ### Přidáno

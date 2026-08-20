@@ -9,6 +9,7 @@ import cz.hh.detektormapy.data.entity.FindPhotoEntity
 import cz.hh.detektormapy.data.model.FindCategory
 import cz.hh.detektormapy.data.relation.FindWithPhotos
 import cz.hh.detektormapy.util.BBox
+import cz.hh.detektormapy.util.Geo
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -62,6 +63,19 @@ class FindsRepository(private val findDao: FindDao, private val photoDao: FindPh
     suspend fun getInBBox(bbox: BBox): List<FindEntity> =
         findDao.getInBBox(bbox.west, bbox.south, bbox.east, bbox.north)
 
+    /**
+     * How many finds already sit within [radiusM] of the given point — the capture screen's
+     * "Tvůj lov: N. na tomto místě". The bbox pre-filter keeps the query cheap; the haversine
+     * pass trims the bbox corners so the circle is honest.
+     */
+    suspend fun countNear(lat: Double, lon: Double, radiusM: Double = SAME_SPOT_RADIUS_M): Int {
+        val dLat = radiusM / M_PER_DEG_LAT
+        val dLon = radiusM / (M_PER_DEG_LAT * kotlin.math.cos(Math.toRadians(lat)))
+        return findDao
+            .getInBBox(west = lon - dLon, south = lat - dLat, east = lon + dLon, north = lat + dLat)
+            .count { Geo.distanceM(lat, lon, it.lat, it.lon) <= radiusM }
+    }
+
     suspend fun add(find: FindEntity): Long = findDao.insert(find)
 
     suspend fun update(find: FindEntity) = findDao.update(find)
@@ -81,4 +95,10 @@ class FindsRepository(private val findDao: FindDao, private val photoDao: FindPh
     suspend fun countFinds(): Int = findDao.count()
 
     suspend fun countPhotos(): Int = photoDao.count()
+
+    companion object {
+        /** Radius that still counts as "this spot" for [countNear]. Roughly one field edge. */
+        const val SAME_SPOT_RADIUS_M = 150.0
+        private const val M_PER_DEG_LAT = 111_320.0
+    }
 }

@@ -11,23 +11,16 @@ import cz.hh.detektormapy.data.repository.DetectorRepository
 import cz.hh.detektormapy.detector.PresetMatch
 import cz.hh.detektormapy.detector.PresetRanking
 import cz.hh.detektormapy.detector.SoilEstimate
-import cz.hh.detektormapy.di.IoDispatcher
+import cz.hh.detektormapy.detector.SoilReadingFetcher
 import cz.hh.detektormapy.location.LocationProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import org.json.JSONArray
-import org.json.JSONObject
-import java.io.BufferedReader
-import java.net.HttpURLConnection
-import java.net.URL
 import javax.inject.Inject
 
 /** Whether the soil estimate has anything behind it yet. */
@@ -73,7 +66,7 @@ class DetectorAdvisorViewModel @Inject constructor(
     private val repository: DetectorRepository,
     private val preferences: DetectorPreferences,
     private val locationProvider: LocationProvider,
-    @param:IoDispatcher private val io: CoroutineDispatcher,
+    private val soilFetcher: SoilReadingFetcher,
 ) : ViewModel() {
 
     private val stateFlow = MutableStateFlow(DetectorAdvisorUiState())
@@ -101,7 +94,7 @@ class DetectorAdvisorViewModel @Inject constructor(
                 )
                 return@launch
             }
-            val reading = fetchSoilReading(fix.lat, fix.lon)
+            val reading = soilFetcher.fetch(fix.lat, fix.lon)
             val estimate = reading?.let { SoilEstimate.estimate(it.soilMoistureM3M3, it.recentRainMm) }
             stateFlow.value = stateFlow.value.copy(
                 hasLocation = true,
@@ -144,83 +137,8 @@ class DetectorAdvisorViewModel @Inject constructor(
     }
 
     /** Raw numbers behind the estimate; every field is optional because the model may omit it. */
-    private data class SoilReading(val soilMoistureM3M3: Double?, val recentRainMm: Double?)
-
-    /**
-     * Soil moisture and recent rain from open-meteo.
-     *
-     * The hourly series is used rather than `current` because the soil layers are only published
-     * hourly, and `past_days=3` is what turns "it rained" into "it rained recently". Times are
-     * requested as unix seconds so nothing here has to parse a timezone.
-     *
-     * Fails silently on purpose -- airplane mode in a forest is the normal case, and the screen
-     * then reads "počasí nedostupné" and stays fully usable with a manual override.
-     */
-    private suspend fun fetchSoilReading(lat: Double, lon: Double): SoilReading? = withContext(io) {
-        var connection: HttpURLConnection? = null
-        try {
-            val url = URL(
-                "https://api.open-meteo.com/v1/forecast" +
-                    "?latitude=$lat&longitude=$lon" +
-                    "&hourly=soil_moisture_3_to_9cm,precipitation" +
-                    "&past_days=$PAST_DAYS&forecast_days=1" +
-                    "&timeformat=unixtime&timezone=UTC",
-            )
-            connection = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = TIMEOUT_MS
-                readTimeout = TIMEOUT_MS
-            }
-            if (connection.responseCode !in 200..299) return@withContext null
-            val body = connection.inputStream.bufferedReader().use(BufferedReader::readText)
-            parseSoilReading(JSONObject(body))
-        } catch (e: Exception) {
-            Log.i(TAG, "Počasí není dostupné: ${e.message}")
-            null
-        } finally {
-            runCatching { connection?.disconnect() }
-        }
-    }
-
-    private fun parseSoilReading(root: JSONObject): SoilReading? {
-        val hourly = root.optJSONObject("hourly") ?: return null
-        val times = hourly.optJSONArray("time") ?: return null
-        val nowSec = System.currentTimeMillis() / 1000L
-
-        // The last hour that has already happened; the series runs into the forecast.
-        var index = -1
-        for (i in 0 until times.length()) {
-            if (times.optLong(i, Long.MAX_VALUE) <= nowSec) index = i else break
-        }
-        if (index < 0) return null
-
-        val moistureSeries = hourly.optJSONArray("soil_moisture_3_to_9cm")
-        val moisture = moistureSeries?.let { series ->
-            (index downTo 0).firstNotNullOfOrNull { series.optDoubleOrNull(it) }
-        }
-
-        val rainSeries = hourly.optJSONArray("precipitation")
-        val rain = rainSeries?.let { series ->
-            val since = nowSec - PAST_DAYS * SECONDS_PER_DAY
-            (0..index).sumOf { i ->
-                if (times.optLong(i, 0L) >= since) series.optDoubleOrNull(i) ?: 0.0 else 0.0
-            }
-        }
-
-        return if (moisture == null && rain == null) null else SoilReading(moisture, rain)
-    }
-
-    private fun JSONArray.optDoubleOrNull(index: Int): Double? {
-        if (isNull(index)) return null
-        val value = optDouble(index, Double.NaN)
-        return if (value.isNaN()) null else value
-    }
-
     private companion object {
         const val TAG = "DetectorAdvisorVM"
-        const val TIMEOUT_MS = 5_000
         const val FIX_TIMEOUT_MS = 10_000L
-        const val PAST_DAYS = 3L
-        const val SECONDS_PER_DAY = 86_400L
     }
 }

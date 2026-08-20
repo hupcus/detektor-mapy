@@ -322,6 +322,29 @@ v1 `layers.json` po studeném startu povýšil na v2 (15 vrstev, uživatelský
 Všech 5 nových online vrstev servíruje reálné dlaždice přes `LocalTileServer`
 (ověřeno `adb forward` + curl; prázdná dlaždice mimo pokrytí KVK má ~203 B).
 
+## Vlna 3 (2026-08-20 večer) — po vydání 0.3.0
+
+Vydáno **v0.3.0** (tag + push, Release workflow zelený, APK v Releases).
+Pak pokračování na frontě:
+
+- **Opraveny obě známé chyby vrstev z revize:**
+  - `MapController.syncRasterLayers` řadí podle pozice v už seřazeném seznamu
+    (`LayerManager.layers` řadí podle `prefs.order` s fallbackem na katalog) —
+    dřív se kotva počítala z `def.order` a uživatelský override se ignoroval.
+  - `MapScreen` posluchače mapy (klik/dlouhý stisk/camera-idle) jsou pojmenované
+    a v `onDispose` se odregistrovávají; `disposed` flag kryje závod
+    s `getMapAsync`, který umí doběhnout po zániku obrazovky.
+- **„Tvůj lov: N. na tomto místě"** (z konkurenční analýzy): `FindsRepository.countNear`
+  (bbox pre-filtr + haversine, `SAME_SPOT_RADIUS_M = 150`), přepočet až po přesunu
+  o 30 m (`RECOUNT_AFTER_M`), label je computed property na `FindCaptureUiState`
+  (testy na off-by-one). Zobrazuje se ve formuláři zápisu nálezu.
+- **Vlhkost půdy v pre-flightu**: fetch+parse vytažen z Rádce do sdíleného
+  `detector/SoilReadingFetcher` (@Singleton, `parse(root, nowSec)` s injektovaným
+  časem kvůli testům — série běží do forecastu a poslední odpublikovaná hodina
+  se musí vybírat proti pevným hodinám, ne proti `System.currentTimeMillis`).
+  Pre-flight dělá dva požadavky (current počasí + hourly půda) — DRY vyhrálo
+  nad slepením do jedné URL.
+
 **Pasti na příště (emulátor):**
 - `adb install` debug APK = balíček `cz.hh.detektormapy.debug` — jiný adresář
   `files/layers` než release! Čtení release souboru vypadá jako „merge neběží".

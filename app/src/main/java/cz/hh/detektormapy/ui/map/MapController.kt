@@ -56,13 +56,13 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
         }
 
         // Add / update, bottom first, always below the app's own vector overlays.
-        wanted.forEach { state ->
+        wanted.forEachIndexed { index, state ->
             val id = state.def.id
             val sourceId = MapStyle.rasterSourceId(id)
             val layerId = MapStyle.rasterLayerId(id)
             val template = urlTemplateProvider(id) ?: run {
                 Log.d(TAG, "Vrstva $id zatím nemá URL, přeskakuji")
-                return@forEach
+                return@forEachIndexed
             }
 
             if (id !in installedRasters) {
@@ -86,10 +86,14 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
                     )
                     // Insert below the first already-installed raster that ranks higher, so a
                     // layer toggled off and back on returns to its place instead of jumping to
-                    // the top and hiding everything under it. Falling back to the app-overlay
-                    // anchor keeps every raster below the finds/places/track layers.
+                    // the top and hiding everything under it. Rank = position in `layers`,
+                    // which LayerManager sorts by the user's order override with the catalog
+                    // order as fallback — comparing `def.order` here ignored the override.
+                    // Falling back to the app-overlay anchor keeps every raster below the
+                    // finds/places/track layers.
                     val successorId = wanted
-                        .firstOrNull { it.def.order > state.def.order && it.def.id in installedRasters }
+                        .drop(index + 1)
+                        .firstOrNull { it.def.id in installedRasters }
                         ?.def?.id
                     val below = successorId?.let { MapStyle.rasterLayerId(it) }
                         ?: MapStyle.LAYER_AREAS_FILL.takeIf { style.getLayer(it) != null }

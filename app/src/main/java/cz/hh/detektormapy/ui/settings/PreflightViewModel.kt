@@ -7,7 +7,10 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cz.hh.detektormapy.data.AppDirectories
+import cz.hh.detektormapy.data.model.SoilCondition
 import cz.hh.detektormapy.data.repository.CalibrationRepository
+import cz.hh.detektormapy.detector.SoilEstimate
+import cz.hh.detektormapy.detector.SoilReadingFetcher
 import cz.hh.detektormapy.di.IoDispatcher
 import cz.hh.detektormapy.location.Fix
 import cz.hh.detektormapy.location.LocationProvider
@@ -49,6 +52,8 @@ data class PreflightUiState(
     val batteryPercent: Int? = null,
     val weather: WeatherSnapshot? = null,
     val weatherLoading: Boolean = false,
+    /** Model estimate of how wet the ground is; null when offline or the model has no data. */
+    val soil: SoilCondition? = null,
     val refreshing: Boolean = false,
 ) {
     val offlineLayers: List<LayerReadiness> get() = layers.filter { it.offline }
@@ -69,6 +74,7 @@ class PreflightViewModel @Inject constructor(
     private val layerManager: LayerManager,
     private val calibrationRepository: CalibrationRepository,
     private val directories: AppDirectories,
+    private val soilFetcher: SoilReadingFetcher,
     @param:IoDispatcher private val io: CoroutineDispatcher,
 ) : ViewModel() {
 
@@ -176,7 +182,11 @@ class PreflightViewModel @Inject constructor(
         if (stateFlow.value.weatherLoading) return
         stateFlow.value = stateFlow.value.copy(weatherLoading = true)
         val weather = fetchWeather(fix.lat, fix.lon)
-        stateFlow.value = stateFlow.value.copy(weather = weather, weatherLoading = false)
+        // Soil moisture from the queue item "vlhkost půdy do pre-flightu": an orientation,
+        // not a depth prediction — the advisor explains the nuance, this screen just states it.
+        val soil = soilFetcher.fetch(fix.lat, fix.lon)
+            ?.let { SoilEstimate.estimate(it.soilMoistureM3M3, it.recentRainMm) }
+        stateFlow.value = stateFlow.value.copy(weather = weather, soil = soil, weatherLoading = false)
     }
 
     /**

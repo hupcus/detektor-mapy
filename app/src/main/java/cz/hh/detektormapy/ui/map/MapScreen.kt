@@ -125,7 +125,49 @@ fun MapScreen(navController: NavHostController, viewModel: MapViewModel = hiltVi
         )
 
         DisposableEffect(mapView) {
+            // getMapAsync may call back after the screen is gone; the flag stops a late
+            // registration and onDispose unhooks everything a completed callback added,
+            // so no listener keeps calling into a dead ViewModel/NavController.
+            var disposed = false
+
+            val clickListener = MapLibreMap.OnMapClickListener { latLng ->
+                val map = mapRef ?: return@OnMapClickListener false
+                when (currentState.value.mode) {
+                    MapMode.DRAW_AREA -> {
+                        viewModel.addDrawingPoint(latLng.latitude, latLng.longitude)
+                        true
+                    }
+
+                    else -> {
+                        val hit = hitTest(map, latLng)
+                        if (hit != null) {
+                            val (kind, id) = hit
+                            if (kind == MapController.KIND_FIND) {
+                                navController.navigate(Routes.findDetail(id))
+                            } else {
+                                navController.navigate(Routes.placeDetail(id))
+                            }
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                }
+            }
+            val longClickListener = MapLibreMap.OnMapLongClickListener { latLng ->
+                pendingLongPress = latLng.latitude to latLng.longitude
+                true
+            }
+            val cameraIdleListener = MapLibreMap.OnCameraIdleListener {
+                mapRef?.let { map ->
+                    val bbox = map.visibleBBox()
+                    viewModel.onViewportChanged(bbox, map.cameraPosition.zoom)
+                    viewModel.refreshAllCalibrations(bbox.centerLat, bbox.centerLon)
+                }
+            }
+
             mapView.getMapAsync { map ->
+                if (disposed) return@getMapAsync
                 mapRef = map
                 map.uiSettings.apply {
                     isAttributionEnabled = true
@@ -143,40 +185,9 @@ fun MapScreen(navController: NavHostController, viewModel: MapViewModel = hiltVi
                     controller = ctrl
                 }
 
-                map.addOnMapClickListener { latLng ->
-                    when (currentState.value.mode) {
-                        MapMode.DRAW_AREA -> {
-                            viewModel.addDrawingPoint(latLng.latitude, latLng.longitude)
-                            true
-                        }
-
-                        else -> {
-                            val hit = hitTest(map, latLng)
-                            if (hit != null) {
-                                val (kind, id) = hit
-                                if (kind == MapController.KIND_FIND) {
-                                    navController.navigate(Routes.findDetail(id))
-                                } else {
-                                    navController.navigate(Routes.placeDetail(id))
-                                }
-                                true
-                            } else {
-                                false
-                            }
-                        }
-                    }
-                }
-
-                map.addOnMapLongClickListener { latLng ->
-                    pendingLongPress = latLng.latitude to latLng.longitude
-                    true
-                }
-
-                map.addOnCameraIdleListener {
-                    val bbox = map.visibleBBox()
-                    viewModel.onViewportChanged(bbox, map.cameraPosition.zoom)
-                    viewModel.refreshAllCalibrations(bbox.centerLat, bbox.centerLon)
-                }
+                map.addOnMapClickListener(clickListener)
+                map.addOnMapLongClickListener(longClickListener)
+                map.addOnCameraIdleListener(cameraIdleListener)
 
                 // Start over Czechia so a first launch without GPS is not lost at sea.
                 map.moveCamera(
@@ -188,7 +199,17 @@ fun MapScreen(navController: NavHostController, viewModel: MapViewModel = hiltVi
                     ),
                 )
             }
-            onDispose { }
+            onDispose {
+                disposed = true
+                mapRef?.let { map ->
+                    map.removeOnMapClickListener(clickListener)
+                    map.removeOnMapLongClickListener(longClickListener)
+                    map.removeOnCameraIdleListener(cameraIdleListener)
+                }
+                mapRef = null
+                styleRef = null
+                controller = null
+            }
         }
 
         // Push state into the style whenever it changes.

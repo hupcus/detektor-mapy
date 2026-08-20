@@ -15,6 +15,7 @@ import cz.hh.detektormapy.location.FixQuality
 import cz.hh.detektormapy.location.LocationMode
 import cz.hh.detektormapy.location.LocationProvider
 import cz.hh.detektormapy.map.LayerManager
+import cz.hh.detektormapy.util.Geo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
@@ -47,6 +48,8 @@ private data class CaptureForm(
     val saving: Boolean = false,
     val savedId: Long? = null,
     val message: String? = null,
+    /** Finds already recorded within [FindsRepository.SAME_SPOT_RADIUS_M] of the fix. */
+    val nearbyCount: Int? = null,
 )
 
 /** Everything the capture screen renders. */
@@ -66,9 +69,24 @@ data class FindCaptureUiState(
     /** Topmost visible overlay at this moment; stored with the find (PLAN.md F2-6). */
     val layerContextId: String? = null,
     val layerTitle: String? = null,
+    /** Finds already recorded around the fix, or null while unknown. */
+    val nearbyCount: Int? = null,
 ) {
     /** No position, no find: `lat`/`lon` are non-null columns and a made-up pin is worthless. */
     val canSave: Boolean get() = fix != null && !saving && savedId == null
+
+    /**
+     * "Tvůj lov: N. na tomto místě" — the find being captured is the (count+1)-th one here.
+     * Null while the count is unknown, so the screen shows nothing rather than a wrong number.
+     */
+    val huntRankLabel: String?
+        get() = nearbyCount?.let { existing ->
+            if (existing == 0) {
+                "První nález na tomto místě"
+            } else {
+                "Tvůj lov: ${existing + 1}. nález na tomto místě"
+            }
+        }
 }
 
 /**
@@ -111,6 +129,7 @@ class FindCaptureViewModel @Inject constructor(
             message = current.message,
             layerContextId = layer?.def?.id,
             layerTitle = layer?.def?.title,
+            nearbyCount = current.nearbyCount,
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, FindCaptureUiState())
 
@@ -127,11 +146,34 @@ class FindCaptureViewModel @Inject constructor(
                 fix = it.fix ?: locationProvider.lastKnown(),
             )
         }
+        form.value.fix?.let(::refreshNearbyCount)
         if (!granted || locationJob?.isActive == true) return
         locationJob = viewModelScope.launch {
             locationProvider.fixes(LocationMode.INTERACTIVE).collect { fix ->
                 form.update { it.copy(fix = fix, fixIsLive = true) }
+                refreshNearbyCount(fix)
             }
+        }
+    }
+
+    /**
+     * Recounts finds around the fix for the "Tvůj lov" line. Fixes arrive about once a second,
+     * so the query only reruns after the user actually walked somewhere else.
+     */
+    private var nearbyCountedAt: Pair<Double, Double>? = null
+
+    private fun refreshNearbyCount(fix: Fix) {
+        val previous = nearbyCountedAt
+        if (previous != null &&
+            Geo.distanceM(previous.first, previous.second, fix.lat, fix.lon) < RECOUNT_AFTER_M
+        ) {
+            return
+        }
+        nearbyCountedAt = fix.lat to fix.lon
+        viewModelScope.launch {
+            runCatching { repository.countNear(fix.lat, fix.lon) }
+                .onSuccess { count -> form.update { it.copy(nearbyCount = count) } }
+                .onFailure { Log.w(TAG, "Počet nálezů v okolí se nepodařilo spočítat", it) }
         }
     }
 
@@ -254,5 +296,8 @@ class FindCaptureViewModel @Inject constructor(
 
     private companion object {
         const val TAG = "FindCaptureViewModel"
+
+        /** How far the fix must move before the nearby-finds count is recomputed. */
+        const val RECOUNT_AFTER_M = 30.0
     }
 }
