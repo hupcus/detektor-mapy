@@ -9,7 +9,12 @@ Typy změn: `Přidáno`, `Změněno`, `Zastaralé`, `Odebráno`, `Opraveno`, `Be
 
 ## [Nezveřejněno]
 
-Nic — poslední změny jsou v 0.2.1.
+### Změněno
+- Aplikace se v telefonu jmenuje **„Detektor mapy“** (s mezerou) místo „DetektorMapy“.
+  Změnil se jen zobrazovaný název; identifikátor balíčku `cz.hh.detektormapy` zůstává, jinak
+  by z toho byla nová aplikace a přišel bys o databázi nálezů. Technické značky uvnitř
+  exportů (`creator` v GPX, `app` v manifestu zálohy, User-Agent) také zůstávají — jsou to
+  identifikátory formátu, ne popisky.
 
 ## [0.2.1] — 2026-08-20
 

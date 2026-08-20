@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">DetektorMapy</string>
+    <string name="app_name">Detektor mapy</string>
 
     <string name="nav_map">Mapa</string>
     <string name="nav_finds">Nálezy</string>

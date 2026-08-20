@@ -55,7 +55,7 @@ fun AboutScreen(navController: NavHostController) {
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            SettingsGroup("DetektorMapy") {
+            SettingsGroup("Detektor mapy") {
                 Text(
                     text = "Verze ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
                     style = MaterialTheme.typography.bodyMedium,
