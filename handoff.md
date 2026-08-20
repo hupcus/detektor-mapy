@@ -345,6 +345,28 @@ Pak pokračování na frontě:
   Pre-flight dělá dva požadavky (current počasí + hourly půda) — DRY vyhrálo
   nad slepením do jedné URL.
 
+**Reorder vrstev (vlna 4):** panel má režim uspořádání (ikona ⇅, šipky místo
+přepínačů, aby reorder nemohl omylem vypnout vrstvu). Logika:
+- `reorderedOverlayOrders` (map/LayerReorder.kt, čistá funkce s testy) přečísluje
+  při každém tahu VŠECHNY překryvy na `index * 10` — výchozí vrstvy často sdílejí
+  stejné katalogové `order` a zápis jediné hodnoty by mohl skončit remízou.
+- Jeden tah = jeden zápis na disk (`LayerPreferences.setOrders` batch edit).
+- MapLibre nemá `moveLayer`, takže `MapController.restackRasterLayers` při
+  nesouladu odebere a znovu přidá **jen layer objekty** (zdroje zůstávají →
+  žádný refetch, stejný princip jako peek přes rasterOpacity). Kotva =
+  LAYER_AREAS_FILL, přidávání bottom-first pod stejnou kotvu reprodukuje pořadí.
+
+**První plný běh offline pipeline (vlna 4):** II. VM pro Úpicko naostro —
+`fetch_tiles.py --source ii_vm --bbox 15.70 50.35 16.35 50.65 --zoom 8-15
+--mode wms --wms-crs EPSG:5514` (3581 dlaždic, 84 MB, CENIA WMS + gdalwarp per
+dlaždice) → `build_pmtiles.py --verify` → **`data/pmtiles/vm2.pmtiles` (63 MB)**.
+Ověřeno v aplikaci na emulátoru: archiv nahraný do `files/layers/` servíruje
+skutečné dlaždice z lokálního souboru (z8/z13/z15 u Úpice, vizuálně
+zkontrolováno). Adresáře `data/` se nekomitují (\*.pmtiles v .gitignore).
+**Do telefonu:** zkopírovat `data/pmtiles/vm2.pmtiles` do
+`Android/data/cz.hh.detektormapy/files/layers/` — katalogový záznam `vm2` na
+něj už čeká. Stejným postupem jde vyrobit `vm3.pmtiles` (source `iii_vm`).
+
 **Pasti na příště (emulátor):**
 - `adb install` debug APK = balíček `cz.hh.detektormapy.debug` — jiný adresář
   `files/layers` než release! Čtení release souboru vypadá jako „merge neběží".

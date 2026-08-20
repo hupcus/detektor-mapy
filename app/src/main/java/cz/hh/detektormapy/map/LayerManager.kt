@@ -195,6 +195,8 @@ class LayerManager @Inject constructor(
 
     fun setOrder(layerId: String, order: Int) = scope.launch { prefs.setOrder(layerId, order) }
 
+    fun setOrders(orders: Map<String, Int>) = scope.launch { prefs.setOrders(orders) }
+
     fun setRotateWithCompass(enabled: Boolean) = scope.launch { prefs.setRotateWithCompass(enabled) }
 
     fun setFollowMode(enabled: Boolean) = scope.launch { prefs.setFollowMode(enabled) }

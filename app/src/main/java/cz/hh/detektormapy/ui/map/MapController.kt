@@ -73,17 +73,6 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
                         attribution = state.def.attribution
                     }
                     style.addSource(RasterSource(sourceId, tileSet, TILE_SIZE))
-                    val rasterLayer = RasterLayer(layerId, sourceId).withProperties(
-                        PropertyFactory.rasterOpacity(state.opacity),
-                        PropertyFactory.rasterFadeDuration(0f),
-                        PropertyFactory.rasterResampling(
-                            if (state.def.kind == LayerKind.WMS) {
-                                Property.RASTER_RESAMPLING_LINEAR
-                            } else {
-                                Property.RASTER_RESAMPLING_LINEAR
-                            },
-                        ),
-                    )
                     // Insert below the first already-installed raster that ranks higher, so a
                     // layer toggled off and back on returns to its place instead of jumping to
                     // the top and hiding everything under it. Rank = position in `layers`,
@@ -98,9 +87,9 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
                     val below = successorId?.let { MapStyle.rasterLayerId(it) }
                         ?: MapStyle.LAYER_AREAS_FILL.takeIf { style.getLayer(it) != null }
                     if (below != null) {
-                        style.addLayerBelow(rasterLayer, below)
+                        style.addLayerBelow(buildRasterLayer(state), below)
                     } else {
-                        style.addLayer(rasterLayer)
+                        style.addLayer(buildRasterLayer(state))
                     }
                     installedRasters.add(id)
                 }.onFailure { Log.w(TAG, "Vrstvu $id nelze přidat do stylu", it) }
@@ -109,7 +98,50 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
                     ?.setProperties(PropertyFactory.rasterOpacity(state.opacity))
             }
         }
+
+        restackRasterLayers(style, wanted)
     }
+
+    /**
+     * Re-applies the stacking after the user reorders overlays in the panel.
+     *
+     * MapLibre Android has no `moveLayer` (verified via javap over 11.11.0 — see handoff), so a
+     * mismatch is fixed by re-adding the raster *layers* bottom-first below the app-overlay
+     * anchor. Only the layer objects move; their sources stay put, so nothing is refetched —
+     * the same reasoning that keeps the peek feature on `rasterOpacity`.
+     */
+    private fun restackRasterLayers(style: Style, wanted: List<LayerUiState>) {
+        val wantedLayerIds = wanted
+            .filter { it.def.id in installedRasters }
+            .map { MapStyle.rasterLayerId(it.def.id) }
+        if (wantedLayerIds.size < 2) return
+        // Style.getLayers() lists bottom-to-top; a subsequence match means nothing to do.
+        val currentOrder = style.layers.map { it.id }.filter { it in wantedLayerIds }
+        if (currentOrder == wantedLayerIds) return
+
+        val anchor = MapStyle.LAYER_AREAS_FILL.takeIf { style.getLayer(it) != null }
+        wanted.filter { it.def.id in installedRasters }.forEach { state ->
+            val layerId = MapStyle.rasterLayerId(state.def.id)
+            runCatching {
+                style.removeLayer(layerId)
+                // Adding each layer directly below the same anchor stacks it above the one
+                // added before it, so iterating bottom-first reproduces the wanted order.
+                if (anchor != null) {
+                    style.addLayerBelow(buildRasterLayer(state), anchor)
+                } else {
+                    style.addLayer(buildRasterLayer(state))
+                }
+            }.onFailure { Log.w(TAG, "Vrstvu ${state.def.id} se nepodařilo přeskládat", it) }
+        }
+    }
+
+    private fun buildRasterLayer(state: LayerUiState): RasterLayer =
+        RasterLayer(MapStyle.rasterLayerId(state.def.id), MapStyle.rasterSourceId(state.def.id))
+            .withProperties(
+                PropertyFactory.rasterOpacity(state.opacity),
+                PropertyFactory.rasterFadeDuration(0f),
+                PropertyFactory.rasterResampling(Property.RASTER_RESAMPLING_LINEAR),
+            )
 
     /**
      * Adds / removes GeoJSON overlays such as ÚAN (issue F4-3).

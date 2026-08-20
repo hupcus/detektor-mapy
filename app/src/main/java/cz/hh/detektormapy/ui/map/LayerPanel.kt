@@ -8,11 +8,15 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudQueue
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Straighten
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -26,6 +30,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +59,7 @@ fun LayerPanel(
     onCalibrate: (String) -> Unit,
     onManageCalibrations: (String) -> Unit,
     onReload: () -> Unit,
+    onMoveLayer: (String, Int) -> Unit,
     showFinds: Boolean,
     showPlaces: Boolean,
     showAreas: Boolean,
@@ -60,6 +69,7 @@ fun LayerPanel(
     onAddImageOverlay: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var reorderMode by remember { mutableStateOf(false) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Row(
@@ -70,8 +80,21 @@ fun LayerPanel(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text("Vrstvy", style = MaterialTheme.typography.titleLarge)
-            IconButton(onClick = onReload) {
-                Icon(Icons.Filled.Refresh, contentDescription = "Znovu načíst layers.json")
+            Row {
+                IconButton(onClick = { reorderMode = !reorderMode }) {
+                    Icon(
+                        Icons.Filled.SwapVert,
+                        contentDescription = "Uspořádat vrstvy",
+                        tint = if (reorderMode) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+                IconButton(onClick = onReload) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "Znovu načíst layers.json")
+                }
             }
         }
 
@@ -89,8 +112,34 @@ fun LayerPanel(
                 item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
             }
             item { SectionLabel("Historické mapy a reliéf") }
-            items(overlays, key = { it.def.id }) { layer ->
-                LayerRow(layer, onToggle, onOpacity, onOpacityCommitted, onCalibrate, onManageCalibrations)
+            if (reorderMode && overlays.size > 1) {
+                item {
+                    Text(
+                        "Co je v seznamu níž, kreslí se na mapě navrch.",
+                        Modifier.padding(horizontal = 16.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            itemsIndexed(overlays, key = { _, layer -> layer.def.id }) { index, layer ->
+                LayerRow(
+                    layer,
+                    onToggle,
+                    onOpacity,
+                    onOpacityCommitted,
+                    onCalibrate,
+                    onManageCalibrations,
+                    reorder = if (reorderMode) {
+                        ReorderControls(
+                            canMoveUp = index > 0,
+                            canMoveDown = index < overlays.lastIndex,
+                            onMove = { delta -> onMoveLayer(layer.def.id, delta) },
+                        )
+                    } else {
+                        null
+                    },
+                )
             }
             if (overlays.isEmpty()) {
                 item {
@@ -150,6 +199,9 @@ private fun SectionLabel(text: String) {
     )
 }
 
+/** Up/down controls shown instead of the visibility switch while the panel is in reorder mode. */
+data class ReorderControls(val canMoveUp: Boolean, val canMoveDown: Boolean, val onMove: (Int) -> Unit)
+
 @Composable
 private fun LayerRow(
     layer: LayerUiState,
@@ -158,6 +210,7 @@ private fun LayerRow(
     onOpacityCommitted: (String) -> Unit,
     onCalibrate: (String) -> Unit,
     onManageCalibrations: (String) -> Unit,
+    reorder: ReorderControls? = null,
 ) {
     Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -199,14 +252,24 @@ private fun LayerRow(
                     )
                 }
             }
-            Switch(
-                checked = layer.visible,
-                onCheckedChange = { onToggle(layer.def.id, it) },
-                enabled = layer.available,
-            )
+            if (reorder != null) {
+                // The switch hides so a reorder tap can never accidentally toggle a layer.
+                IconButton(onClick = { reorder.onMove(-1) }, enabled = reorder.canMoveUp) {
+                    Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Posunout výš")
+                }
+                IconButton(onClick = { reorder.onMove(+1) }, enabled = reorder.canMoveDown) {
+                    Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Posunout níž")
+                }
+            } else {
+                Switch(
+                    checked = layer.visible,
+                    onCheckedChange = { onToggle(layer.def.id, it) },
+                    enabled = layer.available,
+                )
+            }
         }
 
-        if (layer.visible && layer.available) {
+        if (reorder == null && layer.visible && layer.available) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Slider(
                     value = layer.opacity,

@@ -18,6 +18,10 @@ Typy změn: `Přidáno`, `Změněno`, `Zastaralé`, `Odebráno`, `Opraveno`, `Be
   (sucho/vlhko/mokro) ze stejného modelu jako Rádce, s poctivou poznámkou, že
   jde o ~11km mřížku, ne o měření pole.
 
+- **Přeuspořádání vrstev v panelu** — nová ikona ⇅ přepne panel do režimu
+  uspořádání, šipky posouvají vrstvu v seznamu a mapa se přeskládá okamžitě,
+  bez znovunačítání dlaždic. Co je v seznamu níž, kreslí se na mapě navrch.
+
 ### Opraveno
 - Pořadí překryvných vrstev na mapě nyní respektuje uživatelské přeuspořádání
   (dřív se bralo jen pevné pořadí z katalogu).

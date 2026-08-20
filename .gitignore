@@ -48,6 +48,8 @@ signing.properties
 *.tif
 *.tiff
 *.vrt
+# Pracovni adresar pipeline: surove dlazdice a hotove archivy (84+ MB na region).
+data/
 tools/out/
 tools/tiles/
 tools/cache/

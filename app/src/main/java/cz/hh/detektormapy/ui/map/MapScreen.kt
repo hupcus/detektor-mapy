@@ -383,6 +383,7 @@ fun MapScreen(navController: NavHostController, viewModel: MapViewModel = hiltVi
                 navController.navigate(Routes.calibrations(layerId))
             },
             onReload = { viewModel.reloadLayers() },
+            onMoveLayer = viewModel::moveOverlay,
             showFinds = state.showFinds,
             showPlaces = state.showPlaces,
             showAreas = state.showAreas,

@@ -58,6 +58,13 @@ class LayerPreferences @Inject constructor(@param:ApplicationContext private val
         context.layerDataStore.edit { it[orderKey(layerId)] = order }
     }
 
+    /** One reorder = one disk write, not one edit per layer. */
+    suspend fun setOrders(orders: Map<String, Int>) {
+        context.layerDataStore.edit { prefs ->
+            orders.forEach { (layerId, order) -> prefs[orderKey(layerId)] = order }
+        }
+    }
+
     suspend fun setBasemap(layerId: String) {
         context.layerDataStore.edit { it[basemapKey] = layerId }
     }

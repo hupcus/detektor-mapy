@@ -18,6 +18,7 @@ import cz.hh.detektormapy.location.FixQuality
 import cz.hh.detektormapy.location.LocationProvider
 import cz.hh.detektormapy.location.TrackRecordingService
 import cz.hh.detektormapy.map.LayerManager
+import cz.hh.detektormapy.map.reorderedOverlayOrders
 import cz.hh.detektormapy.util.BBox
 import cz.hh.detektormapy.util.Geo
 import cz.hh.detektormapy.util.WebMercator
@@ -155,6 +156,13 @@ class MapViewModel @Inject constructor(
     }
 
     fun moveLayer(layerId: String, newOrder: Int) = layerManager.setOrder(layerId, newOrder)
+
+    /** Moves an overlay one step in the panel; +1 = higher in the list = drawn more on top. */
+    fun moveOverlay(layerId: String, delta: Int) {
+        val overlayIds = state.value.layers.filterNot { it.def.isBasemap }.map { it.def.id }
+        val orders = reorderedOverlayOrders(overlayIds, layerId, delta) ?: return
+        layerManager.setOrders(orders)
+    }
 
     fun urlTemplateFor(layerId: String): String? = layerManager.urlTemplateFor(layerId)
 
