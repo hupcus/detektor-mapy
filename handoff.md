@@ -193,3 +193,31 @@ běžícímu emulátoru — **v CI zatím není**, chtělo by to emulátor v pip
 
 Pozor: emulátoru dojde místo, když se do něj nahrají PMTiles i APK; `INSTALL_FAILED_INSUFFICIENT_STORAGE`
 se řeší smazáním `/sdcard/Android/data/<pkg>/files/layers`.
+
+## Fronta požadavků (2026-08-20, po vydání 0.1.0)
+Pořadí zadané uživatelem. Odškrtávat průběžně.
+
+- [x] **Odebrat varování na chráněnou zónu** — rušilo, protože centrum Úpice je celé ÚAN I,
+      takže banner svítil pořád. Odebrán banner i snackbar; **vrstva ÚAN na mapě zůstává**.
+      Geometrie (`PolygonIndex.distanceMetersTo` / `nearest`) ponechána i s testy — je to
+      otestovaná utilita, hodí se, kdyby se varování mělo vrátit jako volitelné nebo jako
+      kartička v pre-flightu.
+- [x] **Nemodální posuvník průhlednosti na mapě** (`ui/map/OpacityStrip.kt`) — vlevo dole,
+      needimuje mapu. Ovládá nejvyšší viditelný překryv, klepnutím na název cykluje mezi nimi.
+      Tažení jde přes `liveOpacity` ve `MapViewModel` a na disk se zapíše až v
+      `onValueChangeFinished` — jinak by to bylo ~60 zápisů do DataStore za sekundu.
+      Stejnou cestou nově chodí i posuvník v panelu vrstev.
+- [x] **Bod aktuální polohy na mapě** — chyběl úplně, byl jen údaj o přesnosti v rohu.
+      `MapController.updateLocation()`: kruh přesnosti jako **polygon v metrech** (ne
+      `CircleLayer`, jehož poloměr je v pixelech a při zoomu by lhal o přesnosti), modrá tečka
+      a kužel směru natočený podle kompasu.
+- [ ] **Zobrazit/skrýt nálezy na mapě** — perzistence hotová (`LayerPreferences.showFinds`
+      / `showPlaces` / `showAreas`, `LayerManager.setShowFinds` …), zbývá stav v `MapUiState`,
+      filtrování v `MapController` a přepínače v UI.
+- [ ] **Nastavení detektoru + rozřazovací systém** — nová sekce v Nastavení: profil detektoru
+      a jednoduchý rádce, který podle terénu (les / louka / pole) a počasí (sucho / mokro)
+      doporučí, co nastavit. Pozor na poctivost: aplikace nezná konkrétní stroj, takže má
+      ukládat **uživatelovy vlastní presety** a doporučovat, který použít, ne vymýšlet
+      hodnoty za výrobce.
+- [ ] **Přeorganizovat Nastavení** do záložek/podmenu — teď je to jedna nekonečná nudle.
+- [ ] **Vydat novou verzi** (v0.2.0) — až bude výše hotové.
