@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        Cleartext is disabled everywhere by default (the platform default since API 28) and is
+        re-enabled ONLY for the loopback address. The app serves every raster layer — local
+        PMTiles as well as cached online tiles — through its own HTTP server bound to
+        127.0.0.1, and MapLibre's native HTTP stack would otherwise refuse those requests.
+        No external host is exempted, so real network traffic still requires TLS.
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

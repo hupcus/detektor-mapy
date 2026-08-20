@@ -1,0 +1,174 @@
+name: Endpoint check
+
+# PLAN.md, section 10 (rizika): "Endpointy sluzeb se zmeni (CENIA/CUZK meni URL
+# historicky casto)" -> mitigace je check_endpoints.py v CI cronu 1x mesicne.
+on:
+  schedule:
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+
+concurrency:
+  group: endpoints
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  ISSUE_TITLE: 'Datove zdroje: nedostupny endpoint'
+  ISSUE_LABEL: 'endpoints'
+
+jobs:
+  check:
+    name: Check data source endpoints
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f tools/requirements.txt ]; then
+            pip install -r tools/requirements.txt
+          else
+            pip install requests
+          fi
+
+      # The script exits 1 when a verified P1 source is down; we want the report
+      # either way, so the exit code is captured instead of failing the step here.
+      - name: Probe endpoints
+        id: probe
+        run: |
+          set +e
+          python tools/check_endpoints.py --json > endpoints.json
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          set -e
+          echo "--- raw report ---"
+          cat endpoints.json
+
+      - name: Build report
+        id: report
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+
+          try:
+              with open("endpoints.json", encoding="utf-8") as fh:
+                  results = json.load(fh)
+          except (OSError, ValueError) as exc:
+              results = []
+              print("parse_error=%s" % exc)
+
+          down = [r for r in results if r.get("status") != "OK"]
+          lines = [
+              "| id | priorita | stav | HTTP | detail |",
+              "|---|---|---|---|---|",
+          ]
+          for r in results:
+              prio = str(r.get("priority", "?"))
+              if not r.get("verified", True):
+                  prio += "*"
+              lines.append(
+                  "| `%s` | %s | %s | %s | %s |"
+                  % (
+                      r.get("id"),
+                      prio,
+                      r.get("status"),
+                      r.get("http") if r.get("http") is not None else "-",
+                      str(r.get("detail", "")).replace("|", "/")[:120],
+                  )
+              )
+          lines.append("")
+          lines.append("`*` = endpoint neni overeny (PLAN.md sekce 3: \"overit pri implementaci\").")
+
+          with open("report.md", "w", encoding="utf-8") as fh:
+              fh.write("\n".join(lines))
+
+          print("down=%d" % len(down))
+          print("total=%d" % len(results))
+          print("down_ids=%s" % ", ".join(str(r.get("id")) for r in down))
+          PY
+          echo "--- report.md ---"
+          cat report.md
+
+      - name: Ensure label exists
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create "$ISSUE_LABEL" \
+            --description "Dostupnost externich mapovych sluzeb" \
+            --color "B60205" 2>/dev/null || true
+
+      - name: Open or update issue
+        if: steps.report.outputs.down != '0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOWN_IDS: ${{ steps.report.outputs.down_ids }}
+          DOWN_COUNT: ${{ steps.report.outputs.down }}
+          TOTAL: ${{ steps.report.outputs.total }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "Mesicni kontrola datovych zdroju nasla **${DOWN_COUNT} z ${TOTAL}** nedostupnych endpointu."
+            echo ""
+            echo "Nedostupne: \`${DOWN_IDS}\`"
+            echo ""
+            cat report.md
+            echo ""
+            echo "Beh workflow: ${RUN_URL}"
+            echo ""
+            echo "Co s tim: over URL v \`tools/sources.py\` (GetCapabilities rucne),"
+            echo "pripadne pouzij zalozni zdroj. Data uz stazena do PMTiles tim nejsou dotcena."
+          } > body.md
+
+          EXISTING="$(gh issue list --state open --label "$ISSUE_LABEL" \
+            --search "$ISSUE_TITLE in:title" --json number --jq '.[0].number')"
+
+          if [ -n "$EXISTING" ]; then
+            echo "Aktualizuji issue #${EXISTING}"
+            gh issue comment "$EXISTING" --body-file body.md
+          else
+            echo "Zakladam novou issue"
+            gh issue create --title "$ISSUE_TITLE" --label "$ISSUE_LABEL" --body-file body.md
+          fi
+
+      - name: Close issue when everything is back up
+        if: steps.report.outputs.down == '0' && steps.report.outputs.total != '0' && steps.probe.outputs.exit_code == '0'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          EXISTING="$(gh issue list --state open --label "$ISSUE_LABEL" \
+            --search "$ISSUE_TITLE in:title" --json number --jq '.[0].number')"
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "Vsechny endpointy zase odpovidaji. Beh: ${RUN_URL}"
+            gh issue close "$EXISTING"
+          else
+            echo "Vsechny endpointy OK, zadna otevrena issue."
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: endpoint-report
+          path: |
+            endpoints.json
+            report.md
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Fail when a P1 source is down
+        if: steps.probe.outputs.exit_code != '0'
+        run: |
+          echo "::error::check_endpoints.py skoncil s kodem ${{ steps.probe.outputs.exit_code }} (vypadl overeny P1 zdroj)."
+          exit 1

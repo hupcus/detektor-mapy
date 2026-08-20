@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">DetektorMapy</string>
+
+    <string name="nav_map">Mapa</string>
+    <string name="nav_finds">Nálezy</string>
+    <string name="nav_places">Místa</string>
+    <string name="nav_settings">Nastavení</string>
+
+    <string name="track_channel_name">Záznam pochůzky</string>
+    <string name="track_channel_desc">Běžící záznam trasy na pozadí</string>
+    <string name="track_notification_title">Zaznamenávám pochůzku</string>
+    <string name="track_action_mark">Označit nález</string>
+    <string name="track_action_stop">Ukončit</string>
+    <string name="track_notification_starting">Spouštím záznam…</string>
+    <string name="track_notification_stats">%1$s · %2$s · %3$d bodů</string>
+    <string name="track_notification_finds">Označené nálezy: %1$d</string>
+    <string name="track_default_name">Pochůzka %1$s</string>
+    <string name="track_stopped_title">Záznam pochůzky ukončen</string>
+    <string name="track_stopped_permission">Aplikace přišla o oprávnění k poloze. Zaznamenaná část trasy je uložená.</string>
+    <string name="track_stopped_no_location">GPS přestala dodávat polohu, záznam byl ukončen. Zaznamenaná část trasy je uložená.</string>
+    <string name="track_stopped_error">Záznam se nepodařilo spustit.</string>
+</resources>

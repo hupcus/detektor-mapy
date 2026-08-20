@@ -1,0 +1,42 @@
+# DetektorMapy — desktop preprocessing pipeline
+# Instalace:  python3 -m pip install -r tools/requirements.txt
+#
+# Python 3.9+ (vyvíjeno a testováno na 3.9.6 — bez `X | Y` unionů za běhu).
+
+# --- povinné pro stahování dlaždic a REST dotazy ---
+requests>=2.28,<3
+
+# --- volitelné, ale doporučené ---
+tqdm>=4.64,<5            # progress bar (fetch_tiles, build_pmtiles); bez něj se použije fallback
+Pillow>=9.0,<12          # kontrola/validace stažených dlaždic, skládání DMR náhledů
+
+# --- volitelné: usnadní matematiku, není nutné ---
+# Vlastní implementace tile math je v tools/fetch_tiles.py, mercantile je jen "nice to have".
+mercantile>=1.2,<2
+
+# --- volitelné: numerika pro dmr5g_hillshade.py (multi-directional hillshade + SVF) ---
+numpy>=1.21
+
+# --- volitelné: rychlejší/čistší reprojekce bboxu 3857 <-> 5514 ---
+# Bez pyproj se použije CLI `gdaltransform` (součást GDAL).
+pyproj>=3.2
+
+# --- volitelné: pokud je k dispozici, build_pmtiles.py ho preferuje před vlastním writerem ---
+pmtiles>=3.2
+
+# ============================================================================
+# SYSTÉMOVÉ (NE-pip) ZÁVISLOSTI — instalují se přes Homebrew, ne přes pip:
+#
+#   brew install gdal      # gdalwarp, gdal_translate, gdal2tiles.py, gdaltransform, gdal_grid
+#   brew install pdal      # pouze pro tools/dmr5g_hillshade.py (LAZ -> DTM)
+#
+# GDAL/rasterio přes pip NEDOPORUČUJEME (binární wheely se často rozcházejí
+# s verzí systémové knihovny). Skripty volají GDAL primárně přes CLI, takže
+# stačí `brew install gdal`; python bindings (osgeo.gdal) jsou volitelné.
+#
+# Skripty, které GDAL potřebují, ho detekují a při chybějící instalaci skončí
+# s čitelnou hláškou, nikoli tracebackem:
+#   - fetch_tiles.py   (jen fallback EPSG:5514 -> 3857)
+#   - warp_scan.py     (vždy)
+#   - dmr5g_hillshade.py (vždy; navíc PDAL)
+# ============================================================================

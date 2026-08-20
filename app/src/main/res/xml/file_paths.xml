@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <files-path name="finds" path="finds/" />
+    <files-path name="layers" path="layers/" />
+    <files-path name="exports" path="exports/" />
+    <files-path name="tracks" path="tracks/" />
+    <external-files-path name="ext_layers" path="layers/" />
+    <external-files-path name="ext_exports" path="exports/" />
+    <external-files-path name="ext_tracks" path="tracks/" />
+    <cache-path name="cache" path="." />
+</paths>

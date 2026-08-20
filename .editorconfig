@@ -1,0 +1,57 @@
+# EditorConfig — https://editorconfig.org
+# Kotlin styl projektu je "official" (viz gradle.properties: kotlin.code.style=official).
+# Sekce [*.{kt,kts}] je zaroven konfigurace ktlintu.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 120
+
+[*.{kt,kts}]
+indent_size = 4
+max_line_length = 120
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+ij_kotlin_imports_layout = *,java.**,javax.**,kotlin.**,^
+ij_kotlin_name_count_to_use_star_import = 2147483647
+ij_kotlin_name_count_to_use_star_import_for_members = 2147483647
+ij_kotlin_packages_to_use_import_on_demand = unset
+
+ktlint_code_style = intellij_idea
+# Jetpack Compose: @Composable funkce se piso s velkym pocatecnim pismenem,
+# coz standardni pravidlo function-naming hlasi jako chybu.
+ktlint_standard_function-naming = disabled
+# Wildcard importy resi pravidla vyse; ponechano zapnute zamerne.
+ktlint_standard_no-wildcard-imports = enabled
+ktlint_standard_max-line-length = enabled
+ktlint_function_naming_ignore_when_annotated_with = Composable, Test
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.{json,json5}]
+indent_size = 2
+
+[*.{xml,svg}]
+indent_size = 4
+
+[*.py]
+indent_size = 4
+max_line_length = 100
+
+[*.md]
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab
+
+[gradlew.bat]
+end_of_line = crlf
+
+[*.{properties,toml}]
+indent_size = 4

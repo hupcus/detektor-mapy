@@ -1,0 +1,114 @@
+# ---------------------------------------------------------------------------
+# Android / Gradle
+# ---------------------------------------------------------------------------
+*.apk
+*.aab
+*.ap_
+*.aar
+*.dex
+*.class
+bin/
+gen/
+out/
+build/
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+!gradle-wrapper.properties
+local.properties
+.cxx/
+release/
+app/release/
+captures/
+lint/intermediates/
+lint/generated/
+lint/outputs/
+lint/tmp/
+lint/reports/
+.navigation/
+proguard/
+*.log
+
+# ---------------------------------------------------------------------------
+# Signing — nikdy nekomitovat klice ani hesla
+# ---------------------------------------------------------------------------
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+
+# ---------------------------------------------------------------------------
+# Mapova a geodata — velikost + licence (PLAN.md sekce 3 a 7)
+# Data se nikdy nekomituji, pripravuji se reprodukovatelne pres tools/.
+# ---------------------------------------------------------------------------
+*.pmtiles
+*.mbtiles
+*.laz
+*.las
+*.tif
+*.tiff
+*.vrt
+tools/out/
+tools/tiles/
+tools/cache/
+
+# ---------------------------------------------------------------------------
+# Python (desktop pipeline pod tools/)
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+.venv/
+venv/
+env/
+ENV/
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+
+# ---------------------------------------------------------------------------
+# IntelliJ / Android Studio
+# ---------------------------------------------------------------------------
+.idea/
+*.iml
+*.ipr
+*.iws
+.idea_modules/
+atlassian-ide-plugin.xml
+com_crashlytics_export_strings.xml
+crashlytics.properties
+crashlytics-build.properties
+fabric.properties
+
+# ---------------------------------------------------------------------------
+# macOS
+# ---------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.DocumentRevisions-V100
+Icon?
+
+# ---------------------------------------------------------------------------
+# Ostatni
+# ---------------------------------------------------------------------------
+*.swp
+*.swo
+*~
+.env
+.env.local

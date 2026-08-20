@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Belt and braces next to android:allowBackup="false".
+
+    The database holds the exact coordinates of every find and every searched area — the one
+    genuinely sensitive thing this app stores, and the reason PLAN.md section 1 rules out any
+    server sync. Cloud backup would quietly ship it to Google Drive anyway, and `adb backup`
+    would pull it over USB, so both transports are refused outright. The supported backup path
+    is the explicit zip export in Nastavení, which the user controls.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="file" />
+        <exclude domain="external" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="file" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>
