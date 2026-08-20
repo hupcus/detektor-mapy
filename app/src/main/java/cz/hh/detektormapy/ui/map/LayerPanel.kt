@@ -191,6 +191,13 @@ private fun LayerRow(
                         color = MaterialTheme.colorScheme.outline,
                     )
                 }
+                if (layer.def.manualAlignment) {
+                    Text(
+                        "Přibližná poloha — přesné zarovnání jen ručně (Přiložit sken…)",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
             }
             Switch(
                 checked = layer.visible,

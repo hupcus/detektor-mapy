@@ -233,6 +233,109 @@ Pořadí zadané uživatelem. Odškrtávat průběžně.
 - [x] **Přeorganizovat Nastavení** do záložek/podmenu — teď je to jedna nekonečná nudle.
 - [x] **Vydat novou verzi** (v0.2.0) — až bude výše hotové.
 
+## Rozšíření mapových podkladů (2026-08-20) — audit zdrojů a nové vrstvy
+
+Zadání: prověřit císařské otisky po krajích (priorita KHK/Úpice), Müllerovu mapu,
+I. VM a indikační skici; zapojit, co jde online. Všechno ověřeno naostro dotazy
+(export s `bboxSR=3857&imageSR=3857`, GetCapabilities, reálné dlaždice).
+
+**Klíčové nálezy:**
+- **Chartae Antiquae (VÚGTK, `chartae-antiquae.cz/TMS/<id>/{z}/{x}/{y}`)** servíruje
+  georeferencované XYZ dlaždice ve **Web Mercatoru**: `MullerC` (Čechy 1720),
+  `MullerM` (Morava 1716), `Military1` (I. VM), i Military2/3. Pozor: v cestě je
+  „TMS", ale osa Y se NEpřevrací (ověřeno oběma variantami). Prázdné dlaždice
+  mimo pokrytí = průhledná PNG ~334 B → empty-tile hranice 400 B platí i tady.
+  Pravděpodobně zdroj, který používá KATNA.
+- **Karlovarský kraj** má vlastní otisky:
+  `geo-ags.kr-karlovarsky.cz/arcgis/rest/services/Image/CisarskeOtisky/MapServer`
+  (dynamický, 5514, export do 3857 funguje). Objeveno přes AGOL Experience item —
+  krajský web službu nikde neinzeruje.
+- **KHK vlastní službu NEMÁ** (portál T-MapServer jen se současnými tématy, hlavní
+  GIS odkaz kraje vede na mrtvou stránku). Pro Úpici platí ruční pipeline z ÚAZK
+  skenů. Vlastní službu nemají ani Plzeňský, Zlínský, JMK, Praha (vyčteny celé
+  REST adresáře); Středočeský/Ústecký/Liberecký/Pardubický/Vysočina/Olomoucký —
+  nenalezeno (jen městské aplikace Ústí n. L. a Liberec).
+- **Indikační skici = jen skeny** (ÚAZK prohlížeč; MZA web už jen odkazuje do ÚAZK).
+  Backend ÚAZK prohlížeče prověřen z JS bundle — žádná georeferencovaná mozaika.
+- **mapserver.ujep.cz je mrtvý** (3. timeout). Web oldmaps žije na
+  `oldmaps.fzp.ujep.cz` (skeny 1vm/2vm/3vm/mul). Online záloha II. VM: chartae
+  `Military2`.
+- Bonus: ČÚZK nově má nativní WM cache **`ORTOFOTO_WM`** a **`ZTM_WM`** (LOD 0–23).
+  Nezapojeno (nesahat na ověřenou P1 vrstvu), zapsáno v DATA_SOURCES.md.
+
+**Co se zapojilo (katalog v2):** `muller_cechy`, `muller_morava`, `vm1`,
+`cisarske_kvk`. Katalog má novou **merge logiku** (`mergeCatalogs` v LayerDef.kt):
+při zvednutí verze `DefaultLayers.catalog` se do existujícího `layers.json` doplní
+jen nové id, uživatelovy úpravy a mazání zůstávají. Bez toho by nové vestavěné
+vrstvy viděly jen čerstvé instalace.
+
+**I. VM v katalogu (F3 návaznost):** nový flag `LayerDef.manualAlignment` — panel
+vrstev u vrstvy trvale ukazuje „Přibližná poloha — přesné zarovnání jen ručně
+(Přiložit sken…)". Online chartae verze slouží na orientaci, přesné hledání jde
+přes Režim A / ImageOverlay, jak bylo rozhodnuto v PLAN.md.
+
+**Pipeline:** nový typ zdroje `xyz` v `tools/sources.py` (šablona bez Capabilities;
+probe = konkrétní ověřená dlaždice, `check_endpoints` kontroluje obrázek > 400 B,
+`fetch_tiles` stahuje šablonou jako WMTS).
+
+**Past na tomto Macu:** chartae-antiquae.cz vyžaduje TLS 1.3 a `/usr/bin/python3`
+má LibreSSL 2.8.3 bez TLS 1.3 → lokální `check_endpoints.py` u chartae zdrojů hlásí
+„TLS chyba", i když služba běží (curl v pořádku, dlaždice dekódovány sips jako
+256×256 JPEG; `cisarske_kvk` probe lokálně prošel). V CI s OpenSSL projde všechno.
+
+## Druhá vlna rozšíření (2026-08-20 večer) — „rozvíjej dál"
+
+**Rozhodnutí uživatele:** aplikace je **výhradně pro osobní, nekomerční užití**
+(čestné prohlášení v konverzaci). Veřejné šíření se teď neřeší; issue #34 zůstává
+otevřené jen pro případ, že by se to v budoucnu změnilo. Chartae/ČÚZK/krajské
+služby se tedy používají ve stejném režimu jako dosud CENIA — lokálně, s atribucí.
+
+**Nové vrstvy v katalogu (pořád verze 2 — v1→v2 ještě nevyšlo):**
+- `vm2_online` (chartae Military2, z5–16) — okamžitá online náhrada CENIA PMTiles
+  a mrtvého `ii_vm_ujep`.
+- `vm3_topo` (chartae Military3, z5–16) — **topografické sekce III. VM 1:25 000**,
+  podrobnější než speciálky; CENIA je vůbec nemá. Názvy vrstev ověřeny
+  z konfigurace chartae porovnávače (`Military3` = 1:25 000, `Military3_75` =
+  speciálky jen do z15, `Military2_144` = speciální mapy II. VM).
+- `ztm` — druhý basemap: ZTM_WM cache ČÚZK (z4–19).
+- `ortofoto` přepnuto z ARCGIS exportu na `ORTOFOTO_WM` XYZ cache (z7–20).
+  Pozor: ArcGIS cache šablona je `/tile/{z}/{y}/{x}` — **řádek před sloupcem**
+  (hlídá to test v test_tools i CatalogMergeTest).
+
+**`tools/archiv_fetch.py` — skeny stabilního katastru z Archivu ÚAZK.** Reverse
+z veřejné aplikace `ags.cuzk.gov.cz/archiv`:
+- token vydává anonymní GP job `arcgis2/.../GenerateToken` (referer archiv appky,
+  parametr prázdný, zpráva „Token je: …"); služby žijí na **arcgis4**
+  (`/Archiv/klady/MapServer` vrstva 3 + ImageServer `archiv_nespojene_stable`).
+- ImageServer hlásí SR 5514, ale souřadnice jsou **pixelový rám** → skeny nejsou
+  georeferencované; export přes `lockRaster`, limit 15000×4100 px/request,
+  `--full` stahuje pruhy a lepí GDALem (ověřeno: list 4 Úpice 7695×10927 px
+  slepený beze švů).
+- Ověřeno na Úpici: `--katastr Úpice` → 5 skenů COC 1840 („Markt Eipel"),
+  vizuálně zkontrolováno. Série: `cio` (otisky), `om` (originální mapy),
+  `kme` (evidenční).
+- GDAL 3.13.3 je od teď na stroji nainstalovaný (brew).
+
+**Ověření na emulátoru (API 36):** merge katalogu ověřen naostro — podstrčený
+v1 `layers.json` po studeném startu povýšil na v2 (15 vrstev, uživatelský
+`ortofoto` zachován jako arcgis, `manualAlignment: true` u vm1 se serializuje).
+Všech 5 nových online vrstev servíruje reálné dlaždice přes `LocalTileServer`
+(ověřeno `adb forward` + curl; prázdná dlaždice mimo pokrytí KVK má ~203 B).
+
+**Pasti na příště (emulátor):**
+- `adb install` debug APK = balíček `cz.hh.detektormapy.debug` — jiný adresář
+  `files/layers` než release! Čtení release souboru vypadá jako „merge neběží".
+- Po `force-stop` může úloha zůstat „viset" za dialogem runtime permissions
+  (GrantPermissionsActivity) — `am start` pak hlásí OK, ale proces aplikace
+  vůbec nevznikne. Řešení: `pm grant` oprávnění přes adb + start s
+  `--activity-clear-task`.
+- Spouštět emulátor na pozadí **bez** `| head` — pipe po zavření zabije emulátor
+  SIGPIPE.
+
+**Licence → issue #34:** JčK výslovně zamezuje obchodní užití (ochranné znaky
+ČÚZK); VÚGTK/chartae a KV kraj podmínky nepublikují — před veřejným šířením nutno
+oslovit. Zapsáno do issue.
+
 ## Presety Nokta The Legend (v0.2.1)
 Zdroj pravdy je `docs/nokta-legend-presety.md` — dokument majitele, ne tovární nastavení.
 Z něj je vygenerovaný `detector/NoktaLegendPresets.kt` (6 profilů: les/louka/pole × běžné/mokro).

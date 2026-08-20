@@ -448,7 +448,8 @@ class TileFetcher:
 
     @staticmethod
     def _auto_mode(source: Source) -> str:
-        if source.type in ("wmts", "arcgis-wmts"):
+        # "xyz" je jen RESTful šablona bez Capabilities — stahuje se stejně jako WMTS.
+        if source.type in ("wmts", "arcgis-wmts", "xyz"):
             return "wmts"
         if source.type == "wms":
             return "wms"

@@ -9,7 +9,31 @@ Typy změn: `Přidáno`, `Změněno`, `Zastaralé`, `Odebráno`, `Opraveno`, `Be
 
 ## [Nezveřejněno]
 
+### Přidáno
+- **Sedm nových online mapových vrstev** (vše ověřeno naostro 2026-08-20):
+  **Müllerova mapa Čech (1720)** a **Moravy (1716)**, **I. vojenské mapování
+  (1764–68)**, **II. vojenské mapování online** a **III. vojenské mapování
+  1:25 000** (topografické sekce — podrobnější než speciálky, jinde nedostupné)
+  z Virtuální mapové sbírky Chartae-antiquae.cz (VÚGTK), **Císařské otisky —
+  Karlovarský kraj** z krajského ArcGIS serveru a **Základní topografická mapa
+  ČÚZK** jako druhý podklad vedle OSM.
+- **`tools/archiv_fetch.py`** — stažení skenů stabilního katastru (císařské
+  otisky, originální mapy, evidenční mapy) z Archivu ÚAZK jedním příkazem podle
+  názvu katastru nebo souřadnice, včetně plného rozlišení. Ověřeno na katastru
+  Úpice (5 skenů, 1840).
+- **I. vojenské mapování je poctivě označené jako přibližné** — mapovalo se od oka,
+  takže vrstva nese nový příznak `manualAlignment` a panel vrstev u ní trvale
+  ukazuje, že přesné zarovnání se dělá ručně přes „Přiložit sken…".
+- **Katalog vrstev se umí doplňovat** — nové vestavěné vrstvy se při aktualizaci
+  aplikace přidají i do existujícího `layers.json`, aniž by přepsaly ruční úpravy.
+- Desktop pipeline zná nový typ zdroje `xyz` (prosté `{z}/{x}/{y}` šablony bez
+  Capabilities) včetně kontroly dostupnosti přes reálnou dlaždici.
+
 ### Změněno
+- **Ortofoto jede z nativní Web Mercator cache ČÚZK** (`ORTOFOTO_WM`) místo
+  serverového přepočtu z S-JTSK — načítá se rychleji a nově až do zoomu 20.
+  Platí pro čerstvé instalace; existující `layers.json` si ponechá starou
+  (funkční) definici.
 - Aplikace se v telefonu jmenuje **„Detektor mapy“** (s mezerou) místo „DetektorMapy“.
   Změnil se jen zobrazovaný název; identifikátor balíčku `cz.hh.detektormapy` zůstává, jinak
   by z toho byla nová aplikace a přišel bys o databázi nálezů. Technické značky uvnitř

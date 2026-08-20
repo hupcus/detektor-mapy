@@ -82,6 +82,12 @@ data class LayerDef(
      * warning from PLAN.md F4-3, so it must be opt-in per layer rather than guessed.
      */
     val isProtectedArea: Boolean = false,
+    /**
+     * The map was surveyed without a trigonometric network, so any global georeference is
+     * only approximate. The layer panel warns the user up front that precise work needs the
+     * manual overlay flow ("Přiložit sken…") instead of trusting this layer's placement.
+     */
+    val manualAlignment: Boolean = false,
 ) {
     val isLocal: Boolean
         get() = kind == LayerKind.PMTILES || kind == LayerKind.MBTILES ||
@@ -93,6 +99,24 @@ data class LayerDef(
     val isRaster: Boolean
         get() = kind == LayerKind.PMTILES || kind == LayerKind.MBTILES ||
             kind == LayerKind.XYZ || kind == LayerKind.WMS || kind == LayerKind.ARCGIS
+}
+
+/**
+ * Merges a `layers.json` read from disk with the current [DefaultLayers] seed.
+ *
+ * The file on disk is the user's — hand edits and removals of *existing* entries survive.
+ * Only layers whose id the file has never seen are appended, and only when the seed catalogue
+ * is newer than the file, so a user who deliberately deleted a default layer is asked again
+ * at most once per catalogue version bump.
+ *
+ * Returns the input catalogue unchanged (same instance) when the file is already at the
+ * seed's version, which is the caller's signal that no write-back is needed.
+ */
+fun mergeCatalogs(onDisk: LayerCatalog, defaults: LayerCatalog): LayerCatalog {
+    if (onDisk.version >= defaults.version) return onDisk
+    val known = onDisk.layers.map { it.id }.toSet()
+    val added = defaults.layers.filter { it.id !in known }
+    return LayerCatalog(version = defaults.version, layers = onDisk.layers + added)
 }
 
 /** Runtime, user-controlled state of a layer (persisted in DataStore, not in layers.json). */

@@ -235,13 +235,24 @@ class LayerManager @Inject constructor(
             writeDefaultCatalog(file)
             return DefaultLayers.catalog
         }
-        return try {
+        val onDisk = try {
             json.decodeFromString(LayerCatalog.serializer(), file.readText())
         } catch (e: Exception) {
             // A hand-edited catalogue with a typo must not brick the map.
             Log.e(TAG, "layers.json je poškozený, používám výchozí katalog", e)
-            DefaultLayers.catalog
+            return DefaultLayers.catalog
         }
+        // A version bump in DefaultLayers means new built-in layers; without this merge they
+        // would only ever reach fresh installs, because the file on disk wins once written.
+        val merged = mergeCatalogs(onDisk, DefaultLayers.catalog)
+        if (merged !== onDisk) {
+            try {
+                file.writeText(json.encodeToString(LayerCatalog.serializer(), merged))
+            } catch (e: IOException) {
+                Log.w(TAG, "Nelze zapsat sloučený layers.json", e)
+            }
+        }
+        return merged
     }
 
     private fun writeDefaultCatalog(file: File) {

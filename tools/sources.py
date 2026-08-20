@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 from dataclasses import asdict, dataclass, field
@@ -43,7 +44,9 @@ LICENCE_WARNING = (
 )
 
 # Typy zdrojů, kterým rozumí fetch_tiles.py / check_endpoints.py
-SOURCE_TYPES = ("wmts", "wms", "arcgis-wmts", "arcgis-rest", "atom")
+# "xyz" = prostá {z}/{x}/{y} šablona ve Web Mercatoru bez Capabilities;
+# dostupnost se ověřuje stažením konkrétní dlaždice (capabilities_url).
+SOURCE_TYPES = ("wmts", "wms", "arcgis-wmts", "arcgis-rest", "atom", "xyz")
 
 
 @dataclass
@@ -88,6 +91,16 @@ class Source:
         if self.capabilities_url:
             return self.capabilities_url
         base = self.effective_url
+        if self.type == "xyz":
+            # Bez Capabilities: probe = konkrétní dlaždice uprostřed ČR (15.5 E, 49.8 N).
+            zoom = max(self.min_zoom, 8)
+            n = 2 ** zoom
+            x = int((15.5 + 180.0) / 360.0 * n)
+            lat = math.radians(49.8)
+            y = int((1.0 - math.log(math.tan(lat) + 1.0 / math.cos(lat)) / math.pi) / 2.0 * n)
+            return (
+                base.replace("{z}", str(zoom)).replace("{x}", str(x)).replace("{y}", str(y))
+            )
         if self.type in ("wmts", "arcgis-wmts"):
             sep = "&" if "?" in base else "?"
             return base + sep + "SERVICE=WMTS&REQUEST=GetCapabilities&VERSION=1.0.0"
@@ -258,6 +271,179 @@ SOURCES: List[Source] = [
         extra={"rest_url": "https://gis2.msk.cz/arcgis/rest/services/podklad/podklad_cis_otisky/MapServer"},
     ),
     Source(
+        id="cisarske_kvk",
+        title="Císařské otisky — Karlovarský kraj",
+        type="arcgis-rest",
+        url="https://geo-ags.kr-karlovarsky.cz/arcgis/rest/services/Image/CisarskeOtisky/MapServer",
+        layer="0",
+        fmt="image/png",
+        ext="png",
+        attribution="© Karlovarský kraj / ČÚZK",
+        crs="EPSG:5514",
+        min_zoom=10,
+        max_zoom=18,
+        priority="P2",
+        notes=(
+            "OVĚŘENO 2026-08-20: dynamický MapServer (bez tile cache), nativně "
+            "EPSG:5514 (wkid 102067). export s bboxSR=3857&imageSR=3857 vrací "
+            "skutečný obraz (47 kB PNG u Karlových Varů) -> v aplikaci LayerKind.ARCGIS. "
+            "Objeveno přes Experience aplikaci kraje (item 3f9f806284b64728abb8690f74b2425e)."
+        ),
+    ),
+    Source(
+        id="muller_cechy",
+        title="Müllerova mapa Čech 1720 (Chartae Antiquae, VÚGTK)",
+        type="xyz",
+        url="https://www.chartae-antiquae.cz/TMS/MullerC/{z}/{x}/{y}",
+        tile_template="https://www.chartae-antiquae.cz/TMS/MullerC/{z}/{x}/{y}",
+        layer="MullerC",
+        fmt="image/jpeg",
+        ext="jpg",
+        attribution="© VÚGTK / Chartae-antiquae.cz",
+        crs="EPSG:3857",
+        min_zoom=5,
+        max_zoom=14,
+        priority="P2",
+        capabilities_url="https://www.chartae-antiquae.cz/TMS/MullerC/13/4423/2778",
+        notes=(
+            "OVĚŘENO 2026-08-20: standardní XYZ ve Web Mercatoru (navzdory 'TMS' v URL "
+            "se osa Y NEpřevrací). z5-z14 vrací skutečné dlaždice, z15 už jen prázdnou "
+            "334B PNG. Prázdné dlaždice mimo pokrytí jsou průhledné PNG ~334 B. "
+            "Georeference je přibližná - mapa je z doby před triangulací."
+        ),
+    ),
+    Source(
+        id="muller_morava",
+        title="Müllerova mapa Moravy 1716 (Chartae Antiquae, VÚGTK)",
+        type="xyz",
+        url="https://www.chartae-antiquae.cz/TMS/MullerM/{z}/{x}/{y}",
+        tile_template="https://www.chartae-antiquae.cz/TMS/MullerM/{z}/{x}/{y}",
+        layer="MullerM",
+        fmt="image/jpeg",
+        ext="jpg",
+        attribution="© VÚGTK / Chartae-antiquae.cz",
+        crs="EPSG:3857",
+        min_zoom=5,
+        max_zoom=14,
+        priority="P2",
+        capabilities_url="https://www.chartae-antiquae.cz/TMS/MullerM/13/4473/2806",
+        notes="Stejné vlastnosti jako muller_cechy, pokrývá Moravu. Ověřeno 2026-08-20.",
+    ),
+    Source(
+        id="vm2_chartae",
+        title="II. vojenské mapování 1836–52 (Chartae Antiquae, VÚGTK)",
+        type="xyz",
+        url="https://www.chartae-antiquae.cz/TMS/Military2/{z}/{x}/{y}",
+        tile_template="https://www.chartae-antiquae.cz/TMS/Military2/{z}/{x}/{y}",
+        layer="Military2",
+        fmt="image/jpeg",
+        ext="jpg",
+        attribution="© VÚGTK / Chartae-antiquae.cz",
+        crs="EPSG:3857",
+        min_zoom=5,
+        max_zoom=16,
+        priority="P2",
+        capabilities_url="https://www.chartae-antiquae.cz/TMS/Military2/12/2230/1380",
+        notes=(
+            "OVĚŘENO 2026-08-20: XYZ Web Mercator, z5-z16 skutečné dlaždice. "
+            "Online záloha k primárnímu ii_vm (CENIA je jen offline PMTiles) — "
+            "nahrazuje mrtvý ii_vm_ujep."
+        ),
+    ),
+    Source(
+        id="vm3_topo_chartae",
+        title="III. vojenské mapování 1:25 000 — topografické sekce (Chartae Antiquae)",
+        type="xyz",
+        url="https://www.chartae-antiquae.cz/TMS/Military3/{z}/{x}/{y}",
+        tile_template="https://www.chartae-antiquae.cz/TMS/Military3/{z}/{x}/{y}",
+        layer="Military3",
+        fmt="image/jpeg",
+        ext="jpg",
+        attribution="© VÚGTK / Chartae-antiquae.cz",
+        crs="EPSG:3857",
+        min_zoom=5,
+        max_zoom=16,
+        priority="P2",
+        capabilities_url="https://www.chartae-antiquae.cz/TMS/Military3/12/2230/1380",
+        notes=(
+            "OVĚŘENO 2026-08-20: XYZ Web Mercator, z5-z16. Topografické sekce 1:25 000 "
+            "- podrobnější než speciálky 1:75 000 z CENIA (iii_vm). Chartae má i "
+            "Military3_75 (speciálky, jen do z15) a Military2_144."
+        ),
+    ),
+    Source(
+        id="ortofoto_wm",
+        title="Ortofoto ČR — Web Mercator cache (ČÚZK)",
+        type="xyz",
+        url="https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO_WM/MapServer/tile/{z}/{y}/{x}",
+        tile_template=(
+            "https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO_WM/MapServer/tile/{z}/{y}/{x}"
+        ),
+        layer="ORTOFOTO_WM",
+        fmt="image/jpeg",
+        ext="jpg",
+        attribution=_CUZK_ATTR,
+        crs="EPSG:3857",
+        min_zoom=7,
+        max_zoom=20,
+        priority="P1",
+        capabilities_url=(
+            "https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO_WM/MapServer/tile/15/11040/17841"
+        ),
+        notes=(
+            "OVĚŘENO 2026-08-20: nativní Web Mercator tile cache (wkid 102100, LOD 0-23; "
+            "reálná data ověřena po z20). Pozor na pořadí v šabloně: ArcGIS cache je "
+            "/tile/{z}/{y}/{x} — řádek před sloupcem. Nahrazuje export přes starou "
+            "S-JTSK službu ortofoto (ta zůstává v registru pro WMTS/kalibraci)."
+        ),
+    ),
+    Source(
+        id="ztm_wm",
+        title="Základní topografická mapa — Web Mercator cache (ČÚZK)",
+        type="xyz",
+        url="https://ags.cuzk.gov.cz/arcgis1/rest/services/ZTM_WM/MapServer/tile/{z}/{y}/{x}",
+        tile_template=(
+            "https://ags.cuzk.gov.cz/arcgis1/rest/services/ZTM_WM/MapServer/tile/{z}/{y}/{x}"
+        ),
+        layer="ZTM_WM",
+        fmt="image/jpeg",
+        ext="jpg",
+        attribution=_CUZK_ATTR,
+        crs="EPSG:3857",
+        min_zoom=4,
+        max_zoom=19,
+        priority="P2",
+        capabilities_url=(
+            "https://ags.cuzk.gov.cz/arcgis1/rest/services/ZTM_WM/MapServer/tile/15/11040/17841"
+        ),
+        notes=(
+            "OVĚŘENO 2026-08-20 (z6 i z19 vrací dlaždice). Topografický podklad "
+            "s vrstevnicemi — v aplikaci druhý basemap vedle OSM."
+        ),
+    ),
+    Source(
+        id="vm1_chartae",
+        title="I. vojenské mapování 1764–68 (Chartae Antiquae, VÚGTK)",
+        type="xyz",
+        url="https://www.chartae-antiquae.cz/TMS/Military1/{z}/{x}/{y}",
+        tile_template="https://www.chartae-antiquae.cz/TMS/Military1/{z}/{x}/{y}",
+        layer="Military1",
+        fmt="image/jpeg",
+        ext="jpg",
+        attribution="© VÚGTK / Chartae-antiquae.cz",
+        crs="EPSG:3857",
+        min_zoom=5,
+        max_zoom=15,
+        priority="P2",
+        capabilities_url="https://www.chartae-antiquae.cz/TMS/Military1/12/2230/1380",
+        notes=(
+            "OVĚŘENO 2026-08-20: XYZ Web Mercator, z5-z15 (dlaždice u Úpice 26 kB JPEG). "
+            "POZOR: mapováno od oka bez trigonometrické sítě, globální georeference je "
+            "jen orientační - v aplikaci má vrstva manualAlignment=true a pro přesnou "
+            "práci se používá ruční overlay (Režim A / Přiložit sken)."
+        ),
+    ),
+    Source(
         id="ii_vm_ujep",
         title="II. vojenské mapování — záloha (oldmaps geolab, UJEP)",
         type="wms",
@@ -272,7 +458,10 @@ SOURCES: List[Source] = [
         priority="P2",
         notes=(
             "Záloha pro případ výpadku CENIA. Pouze HTTP (bez TLS). "
-            "Jméno vrstvy ověř přes GetCapabilities."
+            "Jméno vrstvy ověř přes GetCapabilities. "
+            "2026-08-20: server opět neodpověděl do 15 s (třetí timeout v řadě) - "
+            "považuj za mrtvý; web oldmaps se přestěhoval na oldmaps.fzp.ujep.cz "
+            "(skeny fungují), WMS náhrada neexistuje."
         ),
     ),
     Source(

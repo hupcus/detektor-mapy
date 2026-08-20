@@ -125,6 +125,15 @@ fun AboutScreen(navController: NavHostController) {
                     "Císařské otisky stabilního katastru — © Moravskoslezský kraj / ČÚZK",
                 )
                 AttributionRow(
+                    "Karlovarský kraj",
+                    "Císařské otisky stabilního katastru — © Karlovarský kraj / ČÚZK",
+                )
+                AttributionRow(
+                    "VÚGTK — Chartae-antiquae.cz",
+                    "Müllerovy mapy (1716/1720) a I. vojenské mapování — " +
+                        "© VÚGTK, Virtuální mapová sbírka Chartae-antiquae.cz",
+                )
+                AttributionRow(
                     "MapLibre",
                     "Vykreslování map — MapLibre GL Native, BSD licence",
                 )

@@ -98,6 +98,16 @@ def _classify_body(source: Source, body: bytes, content_type: str) -> Tuple[str,
             return STATUS_OK, "ATOM feed OK"
         return STATUS_BAD_BODY, "nevypadá jako ATOM feed"
 
+    if source.type == "xyz":
+        # Probe je konkrétní dlaždice: musí to být obrázek a ne prázdná průhledná
+        # výplň (ta má u ověřených služeb ~334 B; hranice 400 B viz DATA_SOURCES.md).
+        is_image = body.startswith(b"\xff\xd8") or body.startswith(b"\x89PNG")
+        if not is_image:
+            return STATUS_BAD_BODY, "odpověď není obrázek (content-type: %s)" % content_type
+        if len(body) <= 400:
+            return STATUS_BAD_BODY, "prázdná dlaždice (%d B) — probe je mimo pokrytí?" % len(body)
+        return STATUS_OK, "dlaždice OK (%d B)" % len(body)
+
     return STATUS_OK, "odpověď přijata"
 
 
@@ -285,6 +295,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                     continue
                 if source.type == "arcgis-rest":
                     print("  %s" % str(result["body_head"])[:800])
+                    continue
+                if source.type == "xyz":
+                    print("  (xyz šablona nemá Capabilities — probe je dlaždice, viz stav výše)")
                     continue
                 summary = summarize_capabilities(str(result["body_head"]).encode("utf-8"))
                 print("  POZN.: parsuje se jen prvních ~2 kB odpovědi, seznam může být neúplný.")

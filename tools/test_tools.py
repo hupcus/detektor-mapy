@@ -24,7 +24,9 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import archiv_fetch as af  # noqa: E402
 import build_pmtiles as bp  # noqa: E402
+import check_endpoints as ce  # noqa: E402
 import fetch_tiles as ft  # noqa: E402
 import sources as src  # noqa: E402
 import warp_scan as ws  # noqa: E402
@@ -83,6 +85,137 @@ class TestSources(unittest.TestCase):
         self.assertIn("REQUEST=GetCapabilities", src.get_source("ii_vm").get_capabilities_url())
         self.assertIn("SERVICE=WMS", src.get_source("dmr5g").get_capabilities_url())
         self.assertIn("f=json", src.get_source("uan_npu").get_capabilities_url())
+
+    def test_cisarske_kvk_endpoint_is_the_verified_one(self) -> None:
+        """Regrese: služba žije na geo-ags.kr-karlovarsky.cz (ověřeno 2026-08-20 exportem
+        s bboxSR=3857&imageSR=3857), NE na gis.kr-karlovarsky.cz, který resetuje spojení."""
+        source = src.get_source("cisarske_kvk")
+        self.assertIn("geo-ags.kr-karlovarsky.cz", source.url)
+        self.assertIn("/Image/CisarskeOtisky/MapServer", source.url)
+        self.assertTrue(source.verified)
+        self.assertEqual(source.crs, "EPSG:5514")
+        self.assertEqual(source.type, "arcgis-rest")
+
+    def test_chartae_sources_are_plain_xyz_in_web_mercator(self) -> None:
+        """Regrese: chartae-antiquae má v cestě 'TMS', ale osa Y se NEpřevrací.
+
+        Ověřeno 2026-08-20: standardní XYZ dlaždice vrací obraz, y-flip vrací
+        prázdnou 334B výplň. Kdyby někdo typ přepnul zpět na wmts, check_endpoints
+        by se ptal na neexistující GetCapabilities.
+        """
+        for source_id in ("muller_cechy", "muller_morava", "vm1_chartae", "vm2_chartae", "vm3_topo_chartae"):
+            source = src.get_source(source_id)
+            self.assertEqual(source.type, "xyz", source_id)
+            self.assertEqual(source.crs, "EPSG:3857", source_id)
+            self.assertIn("chartae-antiquae.cz/TMS/", source.url, source_id)
+            self.assertIn("{z}", source.tile_template, source_id)
+            # Probe musí být konkrétní ověřená dlaždice, ne šablona s {z}.
+            self.assertNotIn("{", source.get_capabilities_url(), source_id)
+
+    def test_vm1_chartae_max_zoom_exceeds_muller(self) -> None:
+        """Military1 má data až do z15, Müllerovy mapy končí na z14 (z15 = prázdná PNG)."""
+        self.assertEqual(src.get_source("vm1_chartae").max_zoom, 15)
+        self.assertEqual(src.get_source("muller_cechy").max_zoom, 14)
+
+    def test_cuzk_wm_caches_use_row_before_column(self) -> None:
+        """Regrese: ArcGIS tile cache je /tile/{z}/{y}/{x} — prohození os vrací 404/mimo."""
+        for source_id in ("ortofoto_wm", "ztm_wm"):
+            template = src.get_source(source_id).tile_template or ""
+            self.assertIn("/tile/{z}/{y}/{x}", template, source_id)
+            self.assertEqual(src.get_source(source_id).crs, "EPSG:3857", source_id)
+
+    def test_xyz_capabilities_url_falls_back_to_probe_tile(self) -> None:
+        """Bez explicitní capabilities_url se ze šablony dosadí dlaždice uprostřed ČR."""
+        probe = src.Source(
+            id="_xyz_test",
+            title="",
+            type="xyz",
+            url="https://example.test/T/{z}/{x}/{y}",
+            min_zoom=5,
+        ).get_capabilities_url()
+        self.assertNotIn("{", probe)
+        self.assertIn("/8/", probe)  # max(min_zoom, 8)
+
+    def test_xyz_auto_mode_downloads_via_template(self) -> None:
+        self.assertEqual(
+            ft.TileFetcher._auto_mode(src.get_source("muller_cechy")),
+            "wmts",
+        )
+
+    def test_archiv_token_parsing_matches_gp_message_format(self) -> None:
+        """GP job vrací token ve zprávě 'Token je: …' (formát veřejné aplikace Archiv)."""
+        messages = [
+            {"description": "Executing..."},
+            {"description": "Token je: abc123DEF=="},
+            {"description": "Expiration je: 60"},
+        ]
+        self.assertEqual(af.parse_token_from_messages(messages), "abc123DEF==")
+        self.assertIsNone(af.parse_token_from_messages([{"description": "nic"}]))
+
+    def test_archiv_raster_prefix_per_series(self) -> None:
+        """Ověřený katastr Úpice: cio=B2_a_6C_8260-1, om=B2_a_4C_8003, kme=B2_a_14C_8260-1."""
+        attrs = {
+            "cio_SIGN_INV": "B2_a_6C_8260-1",
+            "om_SIGN_INV": "B2_a_4C_8003",
+            "kme_SIGN_NOMEN": "B2_a_14C_8260-1",
+        }
+        self.assertEqual(af.raster_prefix(attrs, "cio"), "B2_a_6C_8260-1")
+        self.assertEqual(af.raster_prefix(attrs, "om"), "B2_a_4C_8003")
+        self.assertEqual(af.raster_prefix(attrs, "kme"), "B2_a_14C_8260-1")
+        with self.assertRaises(ValueError):
+            af.raster_prefix(attrs, "neznama")
+        with self.assertRaises(ValueError):
+            af.raster_prefix({"cio_SIGN_INV": ""}, "cio")
+
+    def test_archiv_strip_plan_covers_whole_sheet(self) -> None:
+        """Pruhy musí bezešvě pokrýt celý sken a respektovat limit výšky exportu."""
+        # Úpice list 1 (oid 123526): rám 0,0,23,29 -> 11684x14732 px.
+        bbox = (0.0, 0.0, 23.0, 29.0)
+        width_px, height_px = af.frame_to_pixels(bbox)
+        self.assertEqual((width_px, height_px), (11684, 14732))
+
+        strips = af.plan_strips(bbox)
+        self.assertEqual(len(strips), 4)  # ceil(14732 / 4100)
+        # Odshora dolů, na sebe navazují, výšky dají celek.
+        previous_bottom = bbox[3]
+        total_px = 0
+        for (x0, y0, x1, y1), (w, h) in strips:
+            self.assertEqual((x0, x1), (bbox[0], bbox[2]))
+            self.assertAlmostEqual(y1, previous_bottom)
+            self.assertLessEqual(h, af.MAX_EXPORT_H)
+            self.assertEqual(w, width_px)
+            previous_bottom = y0
+            total_px += h
+        self.assertEqual(total_px, height_px)
+        self.assertAlmostEqual(previous_bottom, bbox[1], places=6)
+
+        # Sken širší než limit exportu chce svislé řezy, které neumíme -> chyba.
+        with self.assertRaises(ValueError):
+            af.plan_strips((0.0, 0.0, 40.0, 2.0))
+
+    def test_archiv_fit_size_only_shrinks(self) -> None:
+        self.assertEqual(af.fit_size(11684, 14732), (3251, 4100))
+        self.assertEqual(af.fit_size(800, 600), (800, 600))
+
+    def test_archiv_where_escapes_quotes(self) -> None:
+        where = af.build_where_for_katastr("Ú'pice")
+        self.assertIn("''", where)
+        self.assertNotIn("'Ú'pice'", where)
+
+    def test_classify_body_xyz_accepts_real_tile_rejects_empty(self) -> None:
+        """Empty-tile heuristika: skutečný JPEG projde, 334B průhledná PNG ne."""
+        source = src.get_source("muller_cechy")
+        jpeg = b"\xff\xd8\xff\xe0" + b"\x00" * 500
+        status, _ = ce._classify_body(source, jpeg, "image/jpeg")
+        self.assertEqual(status, ce.STATUS_OK)
+
+        empty_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 300  # ~334 B prázdná dlaždice
+        status, detail = ce._classify_body(source, empty_png, "image/png")
+        self.assertEqual(status, ce.STATUS_BAD_BODY)
+        self.assertIn("prázdná", detail)
+
+        status, _ = ce._classify_body(source, b"<html>error</html>", "text/html")
+        self.assertEqual(status, ce.STATUS_BAD_BODY)
 
     def test_env_override(self) -> None:
         source = src.get_source("uan_npu")
