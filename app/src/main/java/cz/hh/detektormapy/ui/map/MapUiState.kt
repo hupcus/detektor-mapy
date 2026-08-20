@@ -44,6 +44,8 @@ data class MapUiState(
     /** Non-null while the current position sits inside an ÚAN polygon (issue F4-3). */
     val protectedArea: ProtectedAreaHit? = null,
     val geoJsonPayloads: Map<String, String> = emptyMap(),
+    /** True while the user holds the layers button to peek at the modern map underneath. */
+    val peeking: Boolean = false,
 ) {
     val overlayLayers: List<LayerUiState>
         get() = layers.filterNot { it.def.isBasemap }

@@ -172,3 +172,24 @@ v Locus Map 4 to přepracoval.
   Formulovat jako orientaci, ne predikci hloubky: vlhká málo mineralizovaná půda hloubce
   pomáhá, nasycená a mineralizovaná ji sráží.
 - **„Tvůj lov: 2. na tomto místě"** — jeden dotaz nad Room, nejlepší poměr hodnota/práce.
+
+## Náhled reality (peek) — hotovo 2026-08-20
+Podržení tlačítka Vrstvy zprůhlední historické překryvy, puštění je vrátí. Klepnutí dál
+otevírá panel vrstev.
+
+Dvě věci, na které se narazilo a stojí za zapamatování:
+- **`SmallFloatingActionButton` požírá dotyky.** Má vlastní `clickable`, které spotřebuje
+  pointer stream dřív, než ho uvidí `Modifier.pointerInput` na rodiči — dlouhý stisk se tedy
+  nikdy nespustil. Tlačítko je proto obyčejný `Surface` s vlastním `detectTapGestures`.
+- **`adb shell input` neumí věrohodně simulovat podržení.** Ani `swipe` s dlouhým trváním,
+  ani ruční `motionevent DOWN/MOVE/UP` nepřekročí práh dlouhého stisku — gesto se doručí
+  časově zkomprimované a vždy z něj vyjde obyčejné klepnutí. Ověřovat gesta přes adb je
+  slepá ulička; použij instrumentovaný Compose test s `performTouchInput { longClick() }`.
+
+Proto vznikl první androidTest: `app/src/androidTest/.../ui/map/MapOverlayControlsTest.kt`
+(3 testy: podržení zapne a pustí, klepnutí otevře panel bez náhledu, bez viditelného
+překryvu podržení nedělá nic). Spouští se `./gradlew :app:connectedDebugAndroidTest` proti
+běžícímu emulátoru — **v CI zatím není**, chtělo by to emulátor v pipeline.
+
+Pozor: emulátoru dojde místo, když se do něj nahrají PMTiles i APK; `INSTALL_FAILED_INSUFFICIENT_STORAGE`
+se řeší smazáním `/sdcard/Android/data/<pkg>/files/layers`.

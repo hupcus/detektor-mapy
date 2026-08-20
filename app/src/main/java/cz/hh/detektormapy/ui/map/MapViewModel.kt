@@ -70,6 +70,12 @@ class MapViewModel @Inject constructor(
     private val protectedAreaState = MutableStateFlow<ProtectedAreaHit?>(null)
 
     /**
+     * Hold-to-peek. Deliberately NOT persisted: it is a momentary look, and routing it through
+     * DataStore would mean a disk write every time the user glances at the modern map.
+     */
+    private val peekState = MutableStateFlow(false)
+
+    /**
      * Flipped by the map screen once the runtime permission dialog comes back. The ViewModel is
      * constructed during composition, i.e. *before* that dialog is even shown, so without this
      * the location flow would complete immediately on a fresh install and the user would see no
@@ -290,6 +296,17 @@ class MapViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Momentarily hides the historical overlays so the user can check what is actually there.
+     *
+     * Implemented as opacity, never as visibility: turning a layer off removes its source from
+     * the style, so restoring it would re-fetch the whole viewport. Opacity is a paint property
+     * -- pure GPU, no tiles, no network.
+     */
+    fun setPeek(on: Boolean) {
+        peekState.value = on
+    }
+
     fun consumeMessage() {
         messageState.value = null
     }
@@ -408,8 +425,9 @@ class MapViewModel @Inject constructor(
             navigateTargetState,
             messageState,
             protectedAreaState,
-        ) { drawing, target, message, protected ->
-            InteractionSnapshot(drawing, target, message, protected)
+            peekState,
+        ) { drawing, target, message, protected, peeking ->
+            InteractionSnapshot(drawing, target, message, protected, peeking)
         }
 
         val locationSnapshot = combine(fixState, headingState) { fix, heading ->
@@ -469,6 +487,7 @@ class MapViewModel @Inject constructor(
                 locationPermissionGranted = locationProvider.hasPermission(),
                 protectedArea = interactionValue.protectedArea,
                 geoJsonPayloads = geoJsonValue,
+                peeking = interactionValue.peeking,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MapUiState())
     }
@@ -496,6 +515,7 @@ class MapViewModel @Inject constructor(
         val target: PlaceEntity?,
         val message: String?,
         val protectedArea: ProtectedAreaHit?,
+        val peeking: Boolean,
     )
 
     private data class LocationSnapshot(val fix: Fix?, val quality: FixQuality, val heading: Float?)

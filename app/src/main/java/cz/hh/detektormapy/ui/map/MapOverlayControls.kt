@@ -1,6 +1,7 @@
 package cz.hh.detektormapy.ui.map
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,11 +9,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.LayersClear
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Stop
@@ -22,12 +25,14 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import cz.hh.detektormapy.location.FixQuality
 import cz.hh.detektormapy.ui.theme.DangerRed
@@ -40,6 +45,7 @@ import kotlin.math.roundToInt
 fun MapOverlayControls(
     state: MapUiState,
     onToggleLayers: () -> Unit,
+    onPeek: (Boolean) -> Unit,
     onToggleFollow: () -> Unit,
     onToggleCompass: () -> Unit,
     onAddFind: () -> Unit,
@@ -63,9 +69,12 @@ fun MapOverlayControls(
             verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalAlignment = Alignment.End,
         ) {
-            SmallFloatingActionButton(onClick = onToggleLayers) {
-                Icon(Icons.Filled.Layers, contentDescription = "Vrstvy")
-            }
+            LayersButton(
+                peeking = state.peeking,
+                canPeek = state.overlayLayers.any { it.visible && it.available && it.def.isRaster },
+                onTap = onToggleLayers,
+                onPeek = onPeek,
+            )
             SmallFloatingActionButton(
                 onClick = onToggleFollow,
                 containerColor = if (state.followMode) {
@@ -179,4 +188,51 @@ private fun qualityColor(quality: FixQuality): Color = when (quality) {
     FixQuality.POOR -> DangerRed
     FixQuality.OK -> WarnAmber
     FixQuality.GOOD -> OkGreen
+}
+
+/**
+ * Layers button with hold-to-peek.
+ *
+ * Deliberately not a [SmallFloatingActionButton]: the FAB installs its own clickable, which
+ * consumes the pointer stream before a parent `pointerInput` ever sees it, so the long press
+ * never fired. A plain [Surface] leaves the gesture handling to us.
+ *
+ * The peek lives on this button rather than on the map surface because a long press on the map
+ * already drops a waypoint, and because a control you can find without looking beats a gesture
+ * you have to remember.
+ */
+@Composable
+private fun LayersButton(peeking: Boolean, canPeek: Boolean, onTap: () -> Unit, onPeek: (Boolean) -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (peeking) {
+            MaterialTheme.colorScheme.tertiaryContainer
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer
+        },
+        shadowElevation = 6.dp,
+        modifier = Modifier
+            .size(48.dp)
+            .pointerInput(canPeek) {
+                detectTapGestures(
+                    onTap = { onTap() },
+                    onLongPress = { if (canPeek) onPeek(true) },
+                    onPress = {
+                        tryAwaitRelease()
+                        onPeek(false)
+                    },
+                )
+            },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = if (peeking) Icons.Filled.LayersClear else Icons.Filled.Layers,
+                contentDescription = if (peeking) {
+                    "Náhled reality — pusť pro návrat historické mapy"
+                } else {
+                    "Vrstvy — podrž pro náhled reality"
+                },
+            )
+        }
+    }
 }

@@ -163,6 +163,25 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
         }
     }
 
+    /**
+     * Applies the momentary peek: historical overlays drop to zero opacity, the base map and
+     * the app's own vector overlays stay.
+     *
+     * Only `rasterOpacity` is touched -- see the note in `syncRasterLayers`. Toggling layer
+     * visibility would remove the source and force a full re-fetch on release, which is exactly
+     * the sort of thing that makes an offline-first app feel broken on a bad signal.
+     */
+    fun applyPeek(style: Style, layers: List<LayerUiState>, peeking: Boolean) {
+        if (!overlaysReady) return
+        layers.filter { it.def.isRaster && !it.def.isBasemap }.forEach { state ->
+            val layer = style.getLayer(MapStyle.rasterLayerId(state.def.id)) as? RasterLayer
+                ?: return@forEach
+            layer.setProperties(
+                PropertyFactory.rasterOpacity(if (peeking) 0f else state.opacity),
+            )
+        }
+    }
+
     fun updateFinds(style: Style, finds: List<FindEntity>) {
         if (!overlaysReady) return
         val features = finds.map { find ->

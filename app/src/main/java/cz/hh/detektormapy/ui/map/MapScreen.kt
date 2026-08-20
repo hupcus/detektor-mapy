@@ -200,6 +200,10 @@ fun MapScreen(navController: NavHostController, viewModel: MapViewModel = hiltVi
             val style = styleRef ?: return@LaunchedEffect
             controller?.syncGeoJsonLayers(style, state.layers, state.geoJsonPayloads)
         }
+        LaunchedEffect(state.peeking, state.layers, styleRef) {
+            val style = styleRef ?: return@LaunchedEffect
+            controller?.applyPeek(style, state.layers, state.peeking)
+        }
         LaunchedEffect(state.finds, styleRef) {
             styleRef?.let { controller?.updateFinds(it, state.finds) }
         }
@@ -256,6 +260,7 @@ fun MapScreen(navController: NavHostController, viewModel: MapViewModel = hiltVi
         MapOverlayControls(
             state = state,
             onToggleLayers = { showLayerPanel = true },
+            onPeek = viewModel::setPeek,
             onToggleFollow = { viewModel.setFollowMode(!state.followMode) },
             onToggleCompass = { viewModel.setRotateWithCompass(!state.rotateWithCompass) },
             onAddFind = { navController.navigate(Routes.FIND_CAPTURE) },
