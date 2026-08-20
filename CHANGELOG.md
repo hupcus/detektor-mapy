@@ -7,7 +7,7 @@ projekt používá [sémantické verzování](https://semver.org/lang/cs/).
 
 Typy změn: `Přidáno`, `Změněno`, `Zastaralé`, `Odebráno`, `Opraveno`, `Bezpečnost`.
 
-## [Nezveřejněno]
+## [0.3.0] — 2026-08-20
 
 ### Přidáno
 - **Sedm nových online mapových vrstev** (vše ověřeno naostro 2026-08-20):
