@@ -3,6 +3,7 @@ package cz.hh.detektormapy.data
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import cz.hh.detektormapy.data.dao.DetectorDao
 import cz.hh.detektormapy.data.dao.FindDao
 import cz.hh.detektormapy.data.dao.FindPhotoDao
 import cz.hh.detektormapy.data.dao.GcpDao
@@ -11,6 +12,8 @@ import cz.hh.detektormapy.data.dao.PlaceDao
 import cz.hh.detektormapy.data.dao.SearchedAreaDao
 import cz.hh.detektormapy.data.dao.TrackDao
 import cz.hh.detektormapy.data.dao.TrackPointDao
+import cz.hh.detektormapy.data.entity.DetectorEntity
+import cz.hh.detektormapy.data.entity.DetectorPresetEntity
 import cz.hh.detektormapy.data.entity.FindEntity
 import cz.hh.detektormapy.data.entity.FindPhotoEntity
 import cz.hh.detektormapy.data.entity.GcpPointEntity
@@ -38,6 +41,8 @@ import cz.hh.detektormapy.data.entity.TrackPointEntity
         LayerCalibrationEntity::class,
         GcpSetEntity::class,
         GcpPointEntity::class,
+        DetectorEntity::class,
+        DetectorPresetEntity::class,
     ],
     version = DetektorDatabase.VERSION,
     exportSchema = true,
@@ -61,8 +66,10 @@ abstract class DetektorDatabase : RoomDatabase() {
 
     abstract fun gcpDao(): GcpDao
 
+    abstract fun detectorDao(): DetectorDao
+
     companion object {
-        const val VERSION = 1
+        const val VERSION = 2
         const val NAME = "detektormapy.db"
     }
 }

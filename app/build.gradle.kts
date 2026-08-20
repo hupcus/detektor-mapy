@@ -21,8 +21,8 @@ android {
         applicationId = "cz.hh.detektormapy"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
@@ -77,6 +77,15 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "/META-INF/DEPENDENCIES"
         }
+    }
+
+    // MigrationTestHelper reads the exported schemas through the Android asset manager, and
+    // Robolectric serves unit tests the *debug* variant's merged assets -- so the schema
+    // directory is registered on the debug build type. Debug-only on purpose: the release APK
+    // must not carry the schema JSONs, and no new dependency is involved, room-testing is
+    // already on the test classpath.
+    sourceSets.getByName("debug") {
+        assets.srcDir("$projectDir/schemas")
     }
 
     testOptions {

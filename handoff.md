@@ -211,13 +211,24 @@ Pořadí zadané uživatelem. Odškrtávat průběžně.
       `MapController.updateLocation()`: kruh přesnosti jako **polygon v metrech** (ne
       `CircleLayer`, jehož poloměr je v pixelech a při zoomu by lhal o přesnosti), modrá tečka
       a kužel směru natočený podle kompasu.
-- [ ] **Zobrazit/skrýt nálezy na mapě** — perzistence hotová (`LayerPreferences.showFinds`
+- [x] **Zobrazit/skrýt nálezy na mapě** — perzistence hotová (`LayerPreferences.showFinds`
       / `showPlaces` / `showAreas`, `LayerManager.setShowFinds` …), zbývá stav v `MapUiState`,
       filtrování v `MapController` a přepínače v UI.
-- [ ] **Nastavení detektoru + rozřazovací systém** — nová sekce v Nastavení: profil detektoru
+- [x] **Nastavení detektoru + rozřazovací systém** — nová sekce v Nastavení: profil detektoru
       a jednoduchý rádce, který podle terénu (les / louka / pole) a počasí (sucho / mokro)
       doporučí, co nastavit. Pozor na poctivost: aplikace nezná konkrétní stroj, takže má
       ukládat **uživatelovy vlastní presety** a doporučovat, který použít, ne vymýšlet
       hodnoty za výrobce.
-- [ ] **Přeorganizovat Nastavení** do záložek/podmenu — teď je to jedna nekonečná nudle.
-- [ ] **Vydat novou verzi** (v0.2.0) — až bude výše hotové.
+      Hotovo: `ui/detector/DetectorProfilesScreen.kt` (CRUD nad detektory a presety) a
+      `ui/detector/DetectorAdvisorScreen.kt` (rádce). Hodnoty presetů jsou **String, ne Int** —
+      každý výrobce škáluje jinak a „18/25“ nebo „auto“ je to, co si člověk reálně zapíše.
+      Terén se **nehádá** (offline nemáme data o krajině), jen se pamatuje poslední volba;
+      stav půdy je odhad z open-meteo `soil_moisture_3_to_9cm` + `past_days=3`, prahy jsou
+      konstanty v `detector/SoilEstimate.kt` a jdou ručně přebít. Řazení presetů je čistá
+      funkce `detector/PresetRanking.kt`. Obecná doporučení (`detector/DetectorAdvice.kt`)
+      záměrně **neobsahují žádná čísla** — jen co terén a vlhkost dělají s hledáním.
+      DB: verze 2, `MIGRATION_1_2` přidává tabulky `detectors` a `detector_presets`
+      (aditivní, žádná destruktivní migrace) + `MigrationTest` nad reálnou v1 databází.
+      Schémata se kvůli `MigrationTestHelper` přidávají do assetů **jen debug** varianty.
+- [x] **Přeorganizovat Nastavení** do záložek/podmenu — teď je to jedna nekonečná nudle.
+- [x] **Vydat novou verzi** (v0.2.0) — až bude výše hotové.

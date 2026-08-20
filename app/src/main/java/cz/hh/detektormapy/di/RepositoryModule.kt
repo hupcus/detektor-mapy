@@ -1,6 +1,7 @@
 package cz.hh.detektormapy.di
 
 import cz.hh.detektormapy.data.AppDirectories
+import cz.hh.detektormapy.data.dao.DetectorDao
 import cz.hh.detektormapy.data.dao.FindDao
 import cz.hh.detektormapy.data.dao.FindPhotoDao
 import cz.hh.detektormapy.data.dao.GcpDao
@@ -13,6 +14,7 @@ import cz.hh.detektormapy.data.export.ProjectExporter
 import cz.hh.detektormapy.data.export.ProjectImporter
 import cz.hh.detektormapy.data.repository.AreasRepository
 import cz.hh.detektormapy.data.repository.CalibrationRepository
+import cz.hh.detektormapy.data.repository.DetectorRepository
 import cz.hh.detektormapy.data.repository.FindsRepository
 import cz.hh.detektormapy.data.repository.GcpRepository
 import cz.hh.detektormapy.data.repository.PlacesRepository
@@ -60,6 +62,10 @@ object RepositoryModule {
     @Provides
     @Singleton
     fun provideGcpRepository(dao: GcpDao): GcpRepository = GcpRepository(dao)
+
+    @Provides
+    @Singleton
+    fun provideDetectorRepository(dao: DetectorDao): DetectorRepository = DetectorRepository(dao)
 
     @Provides
     @Singleton

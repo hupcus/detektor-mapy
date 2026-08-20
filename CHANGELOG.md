@@ -9,7 +9,51 @@ Typy změn: `Přidáno`, `Změněno`, `Zastaralé`, `Odebráno`, `Opraveno`, `Be
 
 ## [Nezveřejněno]
 
-Nic — poslední změny jsou v 0.1.0.
+Nic — poslední změny jsou v 0.2.0.
+
+## [0.2.0] — 2026-08-20
+
+Terénní kolo oprav a doplňků po prvním nasazení na telefon.
+
+### Přidáno
+- **Bod aktuální polohy na mapě** — modrá tečka, prstenec přesnosti a kužel směru podle
+  kompasu. Dřív byl jen údaj o přesnosti v rohu, takže dohledat křížek nebo zbourané
+  stavení podle staré mapy byla loterie. Prstenec je polygon v metrech, ne kolečko
+  v pixelech, aby při zoomu nelhal o přesnosti.
+- **Posuvník průhlednosti přímo na mapě** — vlevo dole, nic neztmavuje. Panel vrstev je
+  modální a zakrývá půlku mapy, takže při tažení posuvníku nebylo vidět, co dělá.
+  Klepnutím na název se přepíná mezi viditelnými překryvy.
+- **Náhled reality** — podržení tlačítka Vrstvy zprůhlední historické mapy, puštění je
+  vrátí. Řešeno průhledností, ne viditelností: vypnutí vrstvy odstraní i zdroj, takže
+  návrat by znamenal znovu stáhnout celý výřez.
+- **Nálezy, místa a prohledané zóny jdou skrýt** (sekce „Na mapě“ v panelu vrstev).
+- **Sekce Detektor** — vlastní detektory, cívky a presety, plus rádce, který podle terénu
+  a odhadnutého stavu půdy seřadí *tvoje* presety a vysvětlí proč. Aplikace zásadně
+  nevymýšlí hodnoty za výrobce: obecná pravidla jsou zvlášť a označená jako orientační.
+  Stav půdy odhaduje z open-meteo (`soil_moisture_3_to_9cm` + srážky za 3 dny) a přiznává,
+  že jde o model na síti ~11 km, ne o měření. Ruční přebití je vždy možné.
+- **Nastavení má čtyři záložky** (Mapa / Detektor / Data / Ostatní) místo jednoho
+  nekonečného seznamu.
+
+### Opraveno
+- **Kalibrace ukazovala prázdné panely.** Kamera byla natvrdo uprostřed republiky, rastrový
+  zdroj se připojoval jen při první kompozici (kdy dlaždicový server ještě neběžel) a
+  dorovnání podle bboxu shodilo zoom pod minimum offline vrstvy. Editor se teď otevře tam,
+  kde máš mapu, ve stejném měřítku.
+- **Stahování dlaždic zabíralo 8× víc místa, než mělo.** CENIA servíruje JPEG, ale zdroj byl
+  deklarovaný jako PNG, takže ho gdalwarp překódovával — 155 kB místo 20 kB na dlaždici.
+- **Průhlednost se zapisovala na disk při každé změně**, tedy zápis do DataStore každý
+  snímek tažení. Nově se ukládá až po puštění.
+- **Kužel směru se vykresloval vedle bodu polohy** místo z něj (špatná kotva ikony).
+- Název vydání hlásil „nepodepsáno“ i u podepsaného APK.
+
+### Odebráno
+- **Varování při vstupu do ÚAN.** Bylo správné, ale nepoužitelné: centrum Úpice je celé
+  ÚAN I, takže banner svítil pořád. Vrstva ÚAN na mapě zůstává, mizí jen to vyskakování.
+
+### Bezpečnost
+- Databáze má migraci 1 → 2 s testem, který ověřuje, že upgrade zachová existující data.
+  Ověřeno i naostro: nález založený v 0.1.0 přežil instalaci podepsané 0.2.0 přes ni.
 
 ## [0.1.0] — nevydáno
 

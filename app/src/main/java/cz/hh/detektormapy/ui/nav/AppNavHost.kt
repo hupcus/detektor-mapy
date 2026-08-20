@@ -8,6 +8,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import cz.hh.detektormapy.ui.calibration.GcpEditorScreen
 import cz.hh.detektormapy.ui.calibration.ImageOverlayScreen
+import cz.hh.detektormapy.ui.detector.DetectorAdvisorScreen
+import cz.hh.detektormapy.ui.detector.DetectorProfilesScreen
 import cz.hh.detektormapy.ui.finds.FindCaptureScreen
 import cz.hh.detektormapy.ui.finds.FindDetailScreen
 import cz.hh.detektormapy.ui.finds.FindsScreen
@@ -66,5 +68,7 @@ fun AppNavHost(navController: NavHostController) {
         composable(Routes.TRACKS) { TracksScreen(navController) }
         composable(Routes.PREFLIGHT) { PreflightScreen(navController) }
         composable(Routes.ABOUT) { AboutScreen(navController) }
+        composable(Routes.DETECTOR_ADVISOR) { DetectorAdvisorScreen(navController) }
+        composable(Routes.DETECTOR_PROFILES) { DetectorProfilesScreen(navController) }
     }
 }

@@ -40,4 +40,13 @@ object ExternalIds {
     fun calibration(createdAt: Long, layerId: String): String = "calib-$createdAt-$layerId"
 
     fun gcpSet(createdAt: Long, layerId: String): String = "gcpset-$createdAt-$layerId"
+
+    /**
+     * A detector row. Only the creation timestamp is used: the name is the one thing a user
+     * renames, and a rename must not turn the row into a different row on the next import.
+     */
+    fun detector(createdAt: Long): String = "detector-$createdAt"
+
+    /** A preset row, keyed on its creation timestamp for the same reason as [detector]. */
+    fun detectorPreset(createdAt: Long): String = "preset-$createdAt"
 }

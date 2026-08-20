@@ -5,6 +5,7 @@ import androidx.room.Room
 import cz.hh.detektormapy.data.ALL_MIGRATIONS
 import cz.hh.detektormapy.data.AppDirectories
 import cz.hh.detektormapy.data.DetektorDatabase
+import cz.hh.detektormapy.data.dao.DetectorDao
 import cz.hh.detektormapy.data.dao.FindDao
 import cz.hh.detektormapy.data.dao.FindPhotoDao
 import cz.hh.detektormapy.data.dao.GcpDao
@@ -66,4 +67,7 @@ object DatabaseModule {
 
     @Provides
     fun provideGcpDao(db: DetektorDatabase): GcpDao = db.gcpDao()
+
+    @Provides
+    fun provideDetectorDao(db: DetektorDatabase): DetectorDao = db.detectorDao()
 }
