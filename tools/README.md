@@ -48,6 +48,7 @@ python3 tools/check_endpoints.py                           # jsou služby živé
 | `warp_scan.py` | GCP z aplikace + sken → přesně warpnutý GeoTIFF → dlaždice → PMTiles | ano |
 | `dmr5g_hillshade.py` | LAZ z ČÚZK → DTM → multi-directional hillshade + SVF → PMTiles | ano + PDAL |
 | `uan_fetch.py` | ÚAN polygony (NPÚ ArcGIS) → GeoJSON, se stránkováním | ne |
+| `archiv_fetch.py` | skeny stabilního katastru (Archiv ÚAZK) podle katastru/souřadnice | jen `--full` |
 
 Každý skript má `--help`. Skoro každý má `--dry-run`.
 
@@ -183,8 +184,20 @@ Přidání nové mapy = nakopírovat `.pmtiles` + jeden řádek v JSONu. **Žád
 
 ## 3. Sken z Archivu ÚAZK (císařský otisk mimo pokryté kraje)
 
-Skeny z `https://ags.cuzk.cz/archiv/` nejsou v žádném souřadnicovém systému.
-Postup podle PLAN.md sekce 6, režim B:
+Skeny z `https://ags.cuzk.gov.cz/archiv/` nejsou v žádném souřadnicovém systému.
+
+**Krok 0 — stažení skenů umí `archiv_fetch.py`, ručně klikat netřeba:**
+
+```bash
+python3 tools/archiv_fetch.py --katastr Úpice --list-only        # co existuje
+python3 tools/archiv_fetch.py --katastr Úpice --out skeny/       # ≤ 4100 px na výšku
+python3 tools/archiv_fetch.py --katastr Úpice --out skeny/ --full # plné rozlišení (GDAL)
+```
+
+`--serie cio` (výchozí) = císařské otisky, `om` = originální mapy SK,
+`kme` = evidenční katastrální mapy. Místo `--katastr` jde `--lonlat LON LAT`.
+
+Dál postup podle PLAN.md sekce 6, režim B:
 
 1. V aplikaci otevři **GCP editor** (split-view starý sken vs. ortofoto),
    naklikej 6+ dvojic bodů (kostel, křižovatka, hráz rybníka) a exportuj GCP soubor.
