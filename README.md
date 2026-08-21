@@ -137,16 +137,6 @@ které je provozují. **V APK nejsou žádná mapová data.**
 | Offline archivy vojenských mapování | © CENIA / Rakouský státní archiv / geolab UJEP |
 | OpenStreetMap (volitelný podklad) | © přispěvatelé OpenStreetMap |
 
-**Na rovinu:** u části služeb zatím nemám písemně potvrzené, co přesně smí veřejně
-šířená aplikace dělat — dotazy jsou napsané, odpovědi ještě nedorazily. Do té doby
-platí nejpřísnější výklad: dlaždice se zobrazují a ukládají v telefonu uživatele, ale
-aplikace **nestahuje oblasti dopředu a nikam data neposílá**. Plné znění dotazů je
-v [`docs/legal/`](docs/legal/).
-
-Každý dotaz na server nese identifikaci aplikace, drží se strop souběžných dotazů
-a při přetížení se aplikace odmlčí. Kdo mapy provozuje, má právo vědět, kdo mu klepe
-na dveře.
-
 ---
 
 ## Je to open source a zůstane
