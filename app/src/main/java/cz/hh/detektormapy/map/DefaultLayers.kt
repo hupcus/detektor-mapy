@@ -20,6 +20,19 @@ object DefaultLayers {
     const val ATTR_NPU = "© NPÚ"
     const val ATTR_CHARTAE = "© VÚGTK / Chartae-antiquae.cz"
 
+    /**
+     * OpenStreetMap — available, but **not the default**, and that is a licence matter rather
+     * than a preference.
+     *
+     * The OSMF Tile Usage Policy forbids a distributed application from pointing at
+     * `tile.openstreetmap.org` as its standard basemap without prior permission (checked
+     * 2026-08-21). A single person using it privately was fine; an app anyone can install is
+     * not. Turning it on for yourself stays a legitimate personal use, so the layer remains in
+     * the catalogue — it just cannot be what every fresh install starts with.
+     *
+     * The lasting fix is our own vector basemap (issue #9); until then [BASEMAP_ZTM] carries
+     * the role, and for Czech terrain it is arguably the better map anyway.
+     */
     val BASEMAP_OSM = LayerDef(
         id = "osm",
         title = "OpenStreetMap",
@@ -29,9 +42,9 @@ object DefaultLayers {
         minZoom = 0,
         maxZoom = 19,
         isBasemap = true,
-        enabledByDefault = true,
         defaultOpacity = 1f,
-        note = "Online podklad. Offline verzi nahraď vektorovými PMTiles (F1-5).",
+        note = "Online podklad. Zapni si ho, pokud ho preferuješ — výchozí být nemůže, " +
+            "pravidla OSM to distribuovaným aplikacím nedovolují.",
     )
 
     val BASEMAP_ZTM = LayerDef(
@@ -43,17 +56,17 @@ object DefaultLayers {
         minZoom = 4,
         maxZoom = 19,
         isBasemap = true,
+        enabledByDefault = true,
         defaultOpacity = 1f,
         bounds = listOf(11.9, 48.4, 19.0, 51.2),
-        note = "Vrstevnice, lesní cesty, kóty — v terénu čitelnější než OSM. " +
-            "Nativní Web Mercator cache, ověřeno 2026-08-20.",
+        note = "Výchozí podklad. Vrstevnice, lesní cesty, kóty — v terénu čitelnější než OSM.",
     )
 
     val catalog = LayerCatalog(
         version = 2,
         layers = listOf(
-            BASEMAP_OSM,
             BASEMAP_ZTM,
+            BASEMAP_OSM,
             LayerDef(
                 id = "muller_cechy",
                 title = "Müllerova mapa Čech (1720)",

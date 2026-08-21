@@ -628,3 +628,78 @@ platí: živě ano, cache z prohlížení ano, hromadně ne.
 
 247 unit testů (ktlint čistý, `assembleDebug` prochází), 101 testů Python pipeline.
 Nové: `MbTilesWriterTest` (10), `TileCacheStoreTest` (11), `PoliteHttpTest` (10).
+
+## Veřejné vydání (2026-08-21) — repo public, v0.5.0
+
+### Rozhodnutí uživatele
+- **Licence: GPL-3.0.** `LICENSE` v kořeni. Důvod: odvozeniny zůstanou otevřené,
+  což sedí na „kdokoliv si může vzít kód a pokračovat".
+- **Výchozí podklad přepnut z OSM na ZTM ČÚZK.** Viz níže.
+
+### Proč OSM přestal být výchozí podklad
+Tile Usage Policy OSMF distribuované aplikaci nedovoluje mít
+`tile.openstreetmap.org` jako standardní podklad bez svolení. Dokud byl uživatel
+jeden, šlo o osobní užití; ve chvíli, kdy README zve lidi k instalaci, je to
+porušení od první minuty. `BASEMAP_ZTM` má nově `enabledByDefault = true`,
+`BASEMAP_OSM` ho ztratil a v katalogu je až za ním. Pro české lesy je ZTM stejně
+lepší podklad (vrstevnice, lesní cesty, kóty).
+
+**Pozor:** `mergeCatalogs` jen doplňuje nová id, existující záznamy nepřepisuje —
+stávající instalace si tedy OSM jako výchozí podklad ponechá. Týká se to jen
+uživatelova telefonu; čerstvé instalace (= veřejné publikum) dostanou ZTM.
+Ověřeno na telefonu: čistá instalace má zapnutou jedinou vrstvu, `ztm`.
+
+**#9 (vlastní vektorový podklad) tím přestává být blokátor vydání** a vrací se do
+role „až bude čas". Hromadné stahování (A2/#31) ale u OSM zakázané zůstává.
+
+### Audit historie před zveřejněním (C2)
+18 commitů, 3,5 MB, čisté. Žádné `.jks/.keystore/.p12/.pem/.env`, žádná binárka
+> 1 MB, `local.properties` i `data/` byly vždy v `.gitignore`. Vzory
+`api_key|secret|password|token|BEGIN PRIVATE KEY|AKIA…|ghp_…|sk-…` přes celou
+historii dávají jen: testovací fixture `abc123DEF==`, dokumentaci a kód, který si
+za běhu bere **anonymní veřejný** token ČÚZK Archivu. Nic k odstranění.
+
+### README pro veřejnost
+Pořadí podle zadání uživatele: co to umí → jak to nainstalovat → právní minimum →
+odkud jsou mapy → open source → co zatím neumí → technické věci nakonec.
+Screenshoty v `docs/img/` jsou **skutečné, z telefonu, z čisté instalace bez
+uživatelových dat** (Müller 1720, II. VM, prolnutí s ortofotem, panel vrstev,
+správa úložiště). Ukazují okolí Maršova u Úpice včetně bodu polohy — kdyby to
+mělo být neutrální místo, stačí je přefotit jinde.
+
+README **nezamlčuje**, že souhlasy institucí zatím nedorazily, a říká, co z toho
+plyne (žádné hromadné stahování, žádné šíření dat).
+
+### Ověřeno na telefonu (Galaxy S25 Ultra, SM-S938B, Android 16, 2026-08-21)
+Debug build `cz.hh.detektormapy.debug`, release v0.4.0 uživatele nedotčena.
+
+- 27 dlaždic `vm2_online` (Úpicko, z12/13/14) online → **letadlový režim + vypnutá
+  wi-fi** (ověřeno `Active default network: none`) → force-stop → start:
+  **27/27 vráceno 200 a bajtově identických**. Nenavštívená dlaždice 204.
+- `vm2_online.cache.mbtiles` stažen `adb pull` (potvrzuje opravu práv 0600→0644)
+  a otevřen desktopovým `sqlite3`: `integrity_check ok`, 9 dlaždic na zoom,
+  TMS řádek 5431 pro XYZ y=2760, **`format|jpg`** (čichání magic bytes funguje),
+  blob bajtově shodný s tím, co posílal server.
+- Správa úložiště na telefonu: volné místo **36,0 GB** (sedí), čítač 14 dlaždic /
+  920 kB, mazání cache vrstvy bez restartu.
+- Po testu odinstalováno včetně dat, síť vrácena (wifi 1, airplane 0),
+  `screen_off_timeout` a `stayon` vráceny.
+
+**Pasti na příště (Samsung, Android 16):**
+- Telefon usne do „dreaming" a proces aplikace **zmrazí** — dotazy přes
+  `adb forward` pak končí timeoutem nebo „Unable to resolve host", což vypadá jako
+  chyba sítě. Řešení: `adb shell dumpsys deviceidle whitelist +<pkg>` a
+  `adb shell svc power stayon usb` na dobu testu.
+- `cmd connectivity airplane-mode enable` **nestačí** — Samsung nechá wi-fi
+  zapnutou i v letadlovém režimu (`wifi_on=2`). Nutné navíc `svc wifi disable`.
+- Tlačítko „Vrstvy" je `Surface` s `detectTapGestures`, takže **v uiautomator dumpu
+  nemá `clickable="true"`**. Souřadnice se musí brát z uzlu s `content-desc`.
+  Slepé klikání podle textových uzlů skončí v úplně jiné obrazovce.
+- `run-as` ztrácí skupinu `ext_data_rw`, takže na `Android/data/<pkg>` nedosáhne;
+  produkční image nepustí ani `adb root`. Soubor z externího úložiště se dá dostat
+  jen tím, že ho aplikace vytvoří čitelný.
+
+### Vydání
+v0.5.0 (versionCode 6). CHANGELOG má sekci 0.5.0, která shrnuje offline cache,
+správu úložiště, slušný HTTP klient, změnu podkladu a licenci. Předchozí 0.4.0 se
+jako release nikdy nevydala — její obsah zůstává v CHANGELOGu pod ní.

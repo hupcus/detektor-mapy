@@ -9,7 +9,53 @@ Typy změn: `Přidáno`, `Změněno`, `Zastaralé`, `Odebráno`, `Opraveno`, `Be
 
 ## [Nezveřejněno]
 
+## [0.5.0] — 2026-08-21
+
+První veřejně vydaná verze. Repozitář je od téhle verze otevřený pod GPL-3.0.
+
 ### Přidáno
+- **Offline cache map — co jsi jednou viděl, máš navždy.** Každá online dlaždice,
+  kterou si na mapě prohlédneš, se uloží do telefonu a příště se servíruje odtamtud.
+  Nemusíš nic připravovat dopředu: projdeš si oblast doma na wi-fi a v lese bez
+  signálu mapa jede dál. Ukládá se **zdrojová** dlaždice poskytovatele, takže
+  srovnání vrstvy se do uložených map nezapeče a jde kdykoliv změnit.
+- **Správa úložiště** v Nastavení → Data: kolik místa zabírá která vrstva, kolik
+  je volného místa, mazání cache po vrstvách i najednou. Když v telefonu zbývá
+  méně než 500 MB, aplikace přestane cache plnit a řekne to.
+- **Vypínač ukládání map** — globální i po jednotlivých vrstvách. Vypnutí zastaví
+  ukládání nových dlaždic; už uložené mapy zůstanou dostupné.
+- **Denní čítač stažených dlaždic** ve Správě úložiště. Počítá se jen v telefonu
+  a nikam se neodesílá — je tu proto, abys viděl, jak moc zatěžuješ mapové služby.
+- **Veřejné README** se screenshoty, návodem na instalaci pro nováčky a přehledem,
+  odkud jsou mapy a čí jsou. Dotazy na poskytovatele dat v `docs/legal/`.
+- **LICENSE (GPL-3.0)** — kdokoliv si může kód vzít a pokračovat v projektu.
+
+### Změněno
+- **Výchozím podkladem je Základní topografická mapa ČÚZK**, ne OpenStreetMap.
+  Důvod je licenční: pravidla OSM nedovolují distribuované aplikaci mít
+  `tile.openstreetmap.org` jako standardní podklad. OSM zůstává v katalogu jako
+  volitelná vrstva. Pro české lesy je ZTM stejně čitelnější — má vrstevnice,
+  lesní cesty a kóty.
+- **Slušné chování k mapovým serverům.** Každý dotaz se hlásí jako
+  `DetektorMapy/<verze> (github.com/hupcus/detektor-mapy)`, na jeden server běží
+  nejvýš 4 souběžné dotazy a při odpovědi „zpomal" (429/503) se aplikace na
+  exponenciálně rostoucí dobu odmlčí a respektuje `Retry-After`. Týká se to
+  i dotazů na počasí.
+- Prohlížení už navštívené oblasti nestojí žádný síťový dotaz. Dřív se aplikace
+  ptala serveru vždy a uložené dlaždice použila až po selhání — se slabým signálem
+  to znamenalo timeout na každou dlaždici.
+
+### Opraveno
+- Uložené mapy jde zkopírovat z telefonu do počítače a otevřít v `sqlite3` nebo
+  jakémkoli nástroji na MBTiles (SQLite je vytvářel jen pro čtení aplikací).
+- Formát uložených dlaždic se pozná z obsahu, ne z přípony v adrese — vrstvy,
+  které posílají JPEG ze šablony bez přípony, se dřív v archivu označily za PNG.
+- Volné místo v telefonu se hlásí správně i tam, kde systém odmítne změřit externí
+  úložiště.
+- Uložené mapy nezabírají víc, než kolik dat v nich reálně je (žurnál SQLite se
+  po dopsání dávky sloučí do archivu).
+
+### Přidáno (dříve nevydané, z v0.4.0)
 - **„Tvůj lov: N. na tomto místě"** — formulář nového nálezu ukazuje, kolikátý
   nález to v okruhu 150 m je („První nález na tomto místě" pro panenské místo).
   Počet se přepočítá, až když se člověk reálně přesune (30 m), ne při každém
