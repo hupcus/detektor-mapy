@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
@@ -38,6 +39,7 @@ class LayerManager @Inject constructor(
     private val prefs: LayerPreferences,
     private val json: Json,
     private val server: LocalTileServer,
+    private val tileCache: TileCacheStore,
     @param:ApplicationScope private val scope: CoroutineScope,
     @param:IoDispatcher private val io: CoroutineDispatcher,
 ) {
@@ -115,6 +117,16 @@ class LayerManager @Inject constructor(
     @Volatile
     private var started = false
 
+    init {
+        // The cache is consulted on tile-server worker threads, which cannot suspend to read a
+        // DataStore, so the two switches are mirrored into plain fields as they change.
+        scope.launch {
+            prefs.state
+                .map { it.cacheTiles to it.cacheExcluded }
+                .collect { (enabled, excluded) -> tileCache.applySettings(enabled, excluded) }
+        }
+    }
+
     /** Idempotent. Safe to call from every `MapScreen` composition. */
     fun ensureStarted() {
         if (started) return
@@ -125,6 +137,8 @@ class LayerManager @Inject constructor(
         scope.launch(io) {
             runCatching { server.start() }
                 .onFailure { Log.e(TAG, "Lokální dlaždicový server se nepodařilo spustit", it) }
+            tileCache.recheckFreeSpace()
+            tileCache.purgeLegacyCache()
             reload()
         }
     }
@@ -273,9 +287,50 @@ class LayerManager @Inject constructor(
             OverlaySnapshot(bitmap, plan.boundsMeters())
         }
 
+    // --- offline tile cache ---------------------------------------------------------
+
+    fun setCacheTiles(enabled: Boolean) = scope.launch { prefs.setCacheTiles(enabled) }
+
+    fun setCacheLayer(layerId: String, enabled: Boolean) = scope.launch { prefs.setCacheLayer(layerId, enabled) }
+
+    /**
+     * Deletes one layer's cache without a restart.
+     *
+     * No unregister/re-register dance is needed: the archive registered with the server is a
+     * [CachedTileArchive] that asks [TileCacheStore] for a handle on each tile, so dropping the
+     * file underneath it is enough. The server's in-memory tiles are dropped too, otherwise the
+     * map would keep drawing from RAM what the user just asked to delete.
+     */
+    suspend fun clearCache(layerId: String): Boolean = withContext(io) {
+        val deleted = tileCache.clear(layerId)
+        server.dropCachedTiles(layerId)
+        deleted
+    }
+
+    /** Deletes every layer's cache. Returns how many files were removed. */
+    suspend fun clearAllCaches(): Int = withContext(io) {
+        val removed = tileCache.clearAll()
+        openArchives.keys.forEach { server.dropCachedTiles(it) }
+        removed
+    }
+
+    /** Cache sizes per layer id, in bytes, largest first. */
+    suspend fun cacheSizes(): Map<String, Long> = withContext(io) { tileCache.sizes() }
+
+    /** Size of a layer's own offline archive (PMTiles/MBTiles/GeoJSON), 0 for online-only layers. */
+    suspend fun archiveSize(def: LayerDef): Long = withContext(io) {
+        if (!def.isLocal) return@withContext 0L
+        runCatching { dirs.layerFile(def.source) }.getOrNull()?.takeIf { it.isFile }?.length() ?: 0L
+    }
+
+    suspend fun freeSpaceBytes(): Long = withContext(io) { tileCache.freeBytes() }
+
+    val cacheLowSpace: StateFlow<Boolean> get() = tileCache.lowSpace
+
     fun shutdown() {
         openArchives.values.forEach { runCatching { it.close() } }
         openArchives.clear()
+        tileCache.shutdown()
         runCatching { server.stop() }
         started = false
     }
@@ -317,49 +372,61 @@ class LayerManager @Inject constructor(
         }
     }
 
+    /**
+     * Puts the persistent tile cache in front of a remote archive.
+     *
+     * Every online layer gets one, unconditionally: the switches are honoured inside
+     * [TileCacheStore] instead, so flipping "Ukládat mapy" does not have to rebuild the whole
+     * layer stack and tiles already on disk keep working.
+     */
+    private fun cached(def: LayerDef, remote: TileArchive): TileArchive = CachedTileArchive(remote, def.id, tileCache)
+
     private fun openArchive(def: LayerDef, onProblem: (String) -> Unit): TileArchive? = try {
         when (def.kind) {
             LayerKind.PMTILES -> localFile(def, onProblem)?.let { PmTilesReader(it) }
 
             LayerKind.MBTILES -> localFile(def, onProblem)?.let { MbTilesReader(it) }
 
-            LayerKind.XYZ -> XyzTileArchive(
-                layerId = def.id,
-                template = def.source,
-                minZoom = def.minZoom,
-                maxZoom = def.maxZoom,
-                bounds = def.boundsBox(),
-                contentType = if (def.source.endsWith(".jpeg") || def.source.endsWith(".jpg")) {
-                    "image/jpeg"
-                } else {
-                    "image/png"
-                },
-                cacheDir = File(dirs.tilesCacheDir, def.id),
+            LayerKind.XYZ -> cached(
+                def,
+                XyzTileArchive(
+                    template = def.source,
+                    minZoom = def.minZoom,
+                    maxZoom = def.maxZoom,
+                    bounds = def.boundsBox(),
+                    contentType = if (def.source.endsWith(".jpeg") || def.source.endsWith(".jpg")) {
+                        "image/jpeg"
+                    } else {
+                        "image/png"
+                    },
+                ),
             )
 
-            LayerKind.WMS -> WmsTileArchive(
-                layerId = def.id,
-                endpoint = def.source,
-                wmsLayers = def.wmsLayers.orEmpty(),
-                styles = def.wmsStyle.orEmpty(),
-                format = def.wmsFormat,
-                version = def.wmsVersion,
-                minZoom = def.minZoom,
-                maxZoom = def.maxZoom,
-                bounds = def.boundsBox(),
-                cacheDir = File(dirs.tilesCacheDir, def.id),
+            LayerKind.WMS -> cached(
+                def,
+                WmsTileArchive(
+                    endpoint = def.source,
+                    wmsLayers = def.wmsLayers.orEmpty(),
+                    styles = def.wmsStyle.orEmpty(),
+                    format = def.wmsFormat,
+                    version = def.wmsVersion,
+                    minZoom = def.minZoom,
+                    maxZoom = def.maxZoom,
+                    bounds = def.boundsBox(),
+                ),
             )
 
-            LayerKind.ARCGIS -> ArcGisTileArchive(
-                layerId = def.id,
-                endpoint = def.source,
-                minZoom = def.minZoom,
-                maxZoom = def.maxZoom,
-                bounds = def.boundsBox(),
-                transparent = def.arcgisFormat != "jpg",
-                format = def.arcgisFormat,
-                visibleLayers = def.arcgisLayers,
-                cacheDir = File(dirs.tilesCacheDir, def.id),
+            LayerKind.ARCGIS -> cached(
+                def,
+                ArcGisTileArchive(
+                    endpoint = def.source,
+                    minZoom = def.minZoom,
+                    maxZoom = def.maxZoom,
+                    bounds = def.boundsBox(),
+                    transparent = def.arcgisFormat != "jpg",
+                    format = def.arcgisFormat,
+                    visibleLayers = def.arcgisLayers,
+                ),
             )
 
             // Vector, GeoJSON and single-image layers are wired straight into the MapLibre

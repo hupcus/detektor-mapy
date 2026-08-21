@@ -56,7 +56,8 @@ v desktop pipeline (GDAL, `-r lanczos`). V appce nikdy.
 ## Mapa modulů — kdo co dělá
 | Balíček | Obsah |
 |---|---|
-| `map/` | `LayerManager` (katalog + registrace archivů), `LocalTileServer`, `CalibratedTileComposer`, `TileWarpGeometry`, `pmtiles/` (PMTiles v3 + MBTiles reader), `WmsTileRenderer` (+ `XyzTileArchive`, `WmsTileArchive`) |
+| `map/` | `LayerManager` (katalog + registrace archivů), `LocalTileServer`, `CalibratedTileComposer`, `TileWarpGeometry`, `pmtiles/` (PMTiles v3 + MBTiles reader/writer), `WmsTileRenderer` (+ `XyzTileArchive`, `WmsTileArchive`), `TileCacheStore` + `CachedTileArchive` (offline cache) |
+| `net/` | `PoliteHttp` (User-Agent, strop souběhu per hostname, backoff), `NetworkUsageStore` (denní čítač stažených dlaždic, jen lokálně) |
 | `calibration/` | `Affine2D` — jediné místo, kde se počítá transformace (3857 metry, ne pixely) |
 | `data/` | Room entity/DAO/repository, `export/` (zip + GeoJSON + GPX), `AppDirectories` |
 | `location/` | `LocationProvider` (platformní LocationManager, ne fused — funguje v letadlovém režimu), `CompassProvider`, `TrackRecordingService` + `TrackRecorder` + `GpxWriter` |
@@ -511,3 +512,119 @@ C právo, D distribuce; milníky M1–M5). Z něj založeno **F7-1 … F7-13
 
 Release v0.4.0 podepsán a nainstalován do telefonu uživatele (data zachována),
 commity 5d9566e + 2708084 pushnuty na main.
+
+## Milník M1 „Offline jádro" (2026-08-21) — F7-1, F7-11, F7-2 hotové, F7-6 návrhy
+
+Commity NEjsou provedené — čekají na schválení.
+
+### F7-1 — write-through cache (#35)
+
+Klíčové rozhodnutí: **cache není v `LocalTileServer`, ale v dekorátoru pod ním.**
+Server volá `CalibratedTileComposer`, a ten si při kalibraci tahá okolí 3×3 —
+cachovat na úrovni serveru by tedy uložilo *zkomponovaný výstup* a zapeklo kalibraci
+do souboru. `CachedTileArchive` obaluje online archiv, takže se cachují **zdrojové
+bajty**, klíč je `(z,x,y)` bez generace a warp probíhá až při servírování.
+
+- `map/pmtiles/MbTilesWriter.kt` — read-write MBTiles handle (WAL, dávkové transakce,
+  TMS flip, `CONFLICT_REPLACE` → idempotence). Umí i číst: cache se čte na worker
+  threadech serveru a píše na jednom pozadovém, a jeden handle s WAL to zvládne bez
+  druhého SQLite spojení.
+- `map/TileCacheStore.kt` — jeden archiv na vrstvu v `layers/<id>.cache.mbtiles`,
+  fronta + jedno vlákno zápisu, dávky, guard na volné místo, mazání per vrstva i vše.
+- **Zrušen `OnlineTileCache`** (soubor na dlaždici v `cacheDir`) ze všech tří online
+  archivů. Chodil síť-první a cache jen jako fallback při selhání — takže procházka
+  už navštíveným územím se slabým signálem stála dotaz a několik vteřin timeoutu na
+  každou dlaždici. Starý adresář se při startu jednorázově smaže (`purgeLegacyCache`).
+- Prázdné dlaždice < 400 B se necachují (dnešní díra v pokrytí může být zítra zaplněná
+  a nic v cache nikdy neexpiruje).
+- Vypínač v Nastavení → Data, plus per-vrstva přepínač ve Správě úložiště. **Čtení
+  z cache jde i s vypnutým přepínačem** — přepínač řídí *plnění*, ne přístup.
+- **Rozhodnutí (moje, k případné revizi):** ortofoto se necachuje jen tehdy, když si to
+  uživatel vypne; zadání navrhovalo výchozí výjimku. Offline ortofoto je pro hledače
+  jedna z nejužitečnějších vrstev a tiché nešetření zrovna jí by bylo překvapivé —
+  páku dává Správa úložiště a guard na volné místo.
+
+### F7-11 — slušnost k serverům (#45)
+
+`net/PoliteHttp.kt`: User-Agent `DetektorMapy/<verze> (github.com/hupcus/detektor-mapy)`
+u *všech* dotazů (dlaždice i open-meteo v Rádci a pre-flightu), semafor 4 souběžných
+dotazů **na hostname**, exponenciální backoff 2 s → 5 min při 429/503 s respektem
+k `Retry-After`. V backoffu se dotaz vůbec neodešle. Denní čítač stažených dlaždic
+(`net/NetworkUsageStore.kt`, DataStore, flush po 20 s) — jen lokálně, žádná telemetrie.
+
+`NetworkUsageStore` se injektuje do `DetektorMapyApp`, aby vznikl hned se procesem;
+lazy vznik při otevření obrazovky přepsal čítač zastaralou hodnotou z disku (chyba
+odhalená na zařízení). Obnovení z disku je proto navíc **aditivní**, ne přiřazení.
+
+### F7-2 — správa úložiště (#36)
+
+`ui/settings/StorageScreen.kt` + `StorageViewModel.kt`, route `Routes.STORAGE`.
+Velikosti se měří `File.length()` včetně `-wal`/`-shm`. Mazání bez restartu funguje
+bez unregister/re-register — registrovaný archiv je dekorátor, který si handle bere
+z `TileCacheStore`, takže stačí smazat soubor pod ním (+ vyhodit dlaždice z paměťové
+cache serveru přes nový `LocalTileServer.dropCachedTiles`).
+
+### Co se našlo až na zařízení (emulátor API 36) a bylo opraveno
+
+1. **SQLite na externím úložišti**: SELinux zamítá `ioctl` na FUSE (`avc: denied
+   { ioctl } … tclass=file`). Vypadá to zle, ale je to neškodné — SQLite si poradí
+   a zápis i WAL fungují. Nezaměňovat s chybou.
+2. **`File.usableSpace` vrací na FUSE cestě 0** → „Volné místo 0 kB". Fallback přes
+   `StatFs` a přes `AppDirectories.internalRoot` (stejný oddíl). Teď hlásí 487 MB,
+   což sedí s `df`.
+3. **Velikosti archivů byly 0** — `StorageViewModel` je četl jednorázově v `init`,
+   ale `LayerManager.layers` startuje prázdný a naplní se až po načtení katalogu.
+   Měření teď visí na flow `layers` × `refreshTick`.
+4. **SQLite tvoří soubory 0600**, takže je nešlo dostat z telefonu ani přes `adb pull`,
+   ani přes `run-as` (ten ztrácí skupinu `ext_data_rw`). `MbTilesWriter.relaxPermissions()`
+   je po vytvoření přepne na 644. Není to rozšíření přístupu — na API 30+ hlídá
+   `Android/data/<pkg>` FUSE démon na úrovni adresáře bez ohledu na mode bity.
+5. **`format` v metadatech lhal**: katalog odvozuje typ z přípony URL, chartae ale
+   servíruje JPEG ze šablony bez přípony. Formát se teď **čichá z magic bytes**
+   (`CachedTileArchive.sniffFormat`).
+6. **WAL nikdy nečekpointoval** a tvořil víc než polovinu velikosti cache. Po vyprázdnění
+   fronty se dotčené archivy checkpointují (`wal_checkpoint(TRUNCATE)`).
+
+### Ostré ověření (emulátor Medium_Phone_API_36.0, 2026-08-21)
+
+Telefon (Galaxy S25 Ultra) **nebyl připojený** — `adb devices` prázdné. Ověřeno tedy na
+emulátoru, což pro tuhle funkci stačí (jde o souborový systém a síť, ne o GPU/gesta):
+
+- 27 dlaždic `vm2_online` (Úpicko, z12/13/14, okolí 3×3) staženo online → letadlový
+  režim → restart aplikace → **27/27 vráceno se stavem 200 a bajtově identických**.
+  Nenavštívená dlaždice a nenavštívená vrstva správně 204.
+- Totéž přežilo i **přeinstalaci APK** (data v `files/layers` zůstávají).
+- `vm2_online.cache.mbtiles` stažen do počítače a otevřen **desktopovým sqlite3 3.44.4**:
+  `integrity_check ok`, metadata kompletní, 9 dlaždic na zoom, TMS řádek 5431 pro
+  XYZ y=2760 (správný flip), blob začíná `FFD8FFE0` (skutečný JPEG).
+- „Smazat cache vrstvy" u OSM: soubor zmizel, řádek v UI se přepočítal, vrstva dál
+  servírovala a cache se začala plnit znovu — **bez restartu**.
+- Po testu: `cz.hh.detektormapy.debug` odinstalován i s daty; release balíček na
+  emulátoru nedotčen.
+
+**Zbývá ověřit na telefonu**, až bude připojený: chování v reálném terénu (přechody
+signálu), a že kalibrovaná vrstva servíruje z cache správně zdeformované dlaždice
+(unit test to hlídá a plyne to z konstrukce, ale na telefonu to ověřené není).
+
+### F7-6 — dopisy institucím (#40): návrhy, NEODESLÁNO
+
+`docs/legal/` — šablona + 6 dopisů, kontakty ověřené 2026-08-21:
+ČÚZK (`cuzk@cuzk.cz`, DS `uuaaatg`), VÚGTK (`vugtk@vugtk.cz`, DS `7anp8u4`),
+NPÚ (`epodatelna@npu.cz`, DS `2cy8h6t`), JčK (`posta@kraj-jihocesky.cz`, DS `kdib3rr`),
+MSK (`posta@msk.cz`, DS `8x6bxsd`), KVK (`epodatelna@kr-karlovarsky.cz`, DS `siqbxt2`).
+
+**Nález, který mění plán: OSM se ptát nemusíme, odpověď je v jejich politice.**
+Tile Usage Policy (ověřeno 2026-08-21) *vyžaduje* User-Agent a lokální cache (obojí
+splňujeme), ale *zakazuje* dopředné stahování oblastí a stavbu dlaždicových archivů —
+jmenovitě `.mbtiles` — a výslovně funkce „stáhni oblast pro offline". To je přesně
+**A2 (#31)**. Důsledky: `tile.openstreetmap.org` nesmí zůstat výchozím podkladem
+veřejné verze (dnes je, `DefaultLayers.kt`) a nesmí být cílem hromadného stahování.
+**#9 (vlastní podklad) je tvrdá podmínka vydání**, ne P1 „bylo by fajn".
+
+`docs/DATA_SOURCES.md` má nový sloupec „veřejné šíření". Dokud odpověď nedorazí,
+platí: živě ano, cache z prohlížení ano, hromadně ne.
+
+### Testy
+
+247 unit testů (ktlint čistý, `assembleDebug` prochází), 101 testů Python pipeline.
+Nové: `MbTilesWriterTest` (10), `TileCacheStoreTest` (11), `PoliteHttpTest` (10).

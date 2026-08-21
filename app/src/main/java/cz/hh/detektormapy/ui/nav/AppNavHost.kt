@@ -20,6 +20,7 @@ import cz.hh.detektormapy.ui.settings.AboutScreen
 import cz.hh.detektormapy.ui.settings.CalibrationListScreen
 import cz.hh.detektormapy.ui.settings.PreflightScreen
 import cz.hh.detektormapy.ui.settings.SettingsScreen
+import cz.hh.detektormapy.ui.settings.StorageScreen
 import cz.hh.detektormapy.ui.settings.TracksScreen
 
 @Composable
@@ -68,6 +69,7 @@ fun AppNavHost(navController: NavHostController) {
         composable(Routes.TRACKS) { TracksScreen(navController) }
         composable(Routes.PREFLIGHT) { PreflightScreen(navController) }
         composable(Routes.ABOUT) { AboutScreen(navController) }
+        composable(Routes.STORAGE) { StorageScreen(navController) }
         composable(Routes.DETECTOR_ADVISOR) { DetectorAdvisorScreen(navController) }
         composable(Routes.DETECTOR_PROFILES) { DetectorProfilesScreen(navController) }
     }

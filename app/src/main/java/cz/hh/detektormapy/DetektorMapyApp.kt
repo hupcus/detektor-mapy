@@ -4,10 +4,22 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import cz.hh.detektormapy.net.NetworkUsageStore
 import dagger.hilt.android.HiltAndroidApp
+import javax.inject.Inject
 
 @HiltAndroidApp
 class DetektorMapyApp : Application() {
+
+    /**
+     * Injected here only to exist from the first moment of the process.
+     *
+     * It restores today's download counter from disk, and that has to happen before any tile is
+     * fetched -- created lazily when the storage screen opens, it would fold in a stale total
+     * long after the counting had already started.
+     */
+    @Inject
+    lateinit var networkUsage: NetworkUsageStore
 
     override fun onCreate() {
         super.onCreate()

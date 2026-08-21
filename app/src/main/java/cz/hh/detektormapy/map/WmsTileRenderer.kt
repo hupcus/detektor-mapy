@@ -2,10 +2,10 @@ package cz.hh.detektormapy.map
 
 import android.util.Log
 import cz.hh.detektormapy.map.pmtiles.TileArchive
+import cz.hh.detektormapy.net.PoliteHttp
 import cz.hh.detektormapy.util.BBox
 import cz.hh.detektormapy.util.WebMercator
 import java.io.ByteArrayOutputStream
-import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -29,8 +29,6 @@ object WmsTileRenderer {
 
     /** Connect and read timeouts; in the field a slow WMS must not stall the tile pool. */
     const val TIMEOUT_MS = 8_000
-
-    private const val USER_AGENT = "DetektorMapy/1.0 (Android)"
 
     /**
      * Builds the GetMap URL for one XYZ tile.
@@ -121,7 +119,12 @@ object WmsTileRenderer {
      * hard requirement: the app must stay usable without a signal, so an unreachable online
      * layer simply renders nothing.
      */
-    fun fetch(url: String, timeoutMs: Int = TIMEOUT_MS): ByteArray? {
+    fun fetch(url: String, timeoutMs: Int = TIMEOUT_MS): ByteArray? =
+        PoliteHttp.onHost(PoliteHttp.hostOf(url)) { fetchNow(url, timeoutMs) }
+
+    /** The request itself, already holding one of the host's concurrency slots. */
+    private fun fetchNow(url: String, timeoutMs: Int): ByteArray? {
+        val host = PoliteHttp.hostOf(url)
         var connection: HttpURLConnection? = null
         return try {
             connection = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -129,10 +132,17 @@ object WmsTileRenderer {
                 readTimeout = timeoutMs
                 requestMethod = "GET"
                 instanceFollowRedirects = true
-                setRequestProperty("User-Agent", USER_AGENT)
+                PoliteHttp.identify(this)
                 setRequestProperty("Accept", "image/*,*/*;q=0.8")
             }
             val status = connection.responseCode
+            // 429 and 503 are the server asking to be left alone. Retrying immediately is how a
+            // busy service becomes an unreachable one, so the whole host goes quiet for a while.
+            if (status == 429 || status == 503) {
+                PoliteHttp.noteRejected(host, PoliteHttp.parseRetryAfter(connection.getHeaderField("Retry-After")))
+                return null
+            }
+            PoliteHttp.noteAccepted(host)
             if (status !in 200..299) {
                 Log.d(TAG, "HTTP $status for $url")
                 return null
@@ -160,6 +170,7 @@ object WmsTileRenderer {
                 }
                 out.toByteArray()
                     .takeIf { it.isNotEmpty() && looksLikeImage(it) }
+                    ?.also { PoliteHttp.recordDownload(it.size) }
             }
         } catch (e: IOException) {
             Log.d(TAG, "Offline or unreachable: $url (${e.message})")
@@ -177,58 +188,12 @@ object WmsTileRenderer {
 }
 
 /**
- * Small write-through disk cache for online tiles.
- *
- * Why: a layer the user looked at while they still had a signal must keep working once the signal
- * is gone -- that is the difference between a usable field tool and a blank screen in a forest.
- */
-internal class OnlineTileCache(private val root: File) {
-
-    fun read(layerId: String, z: Int, x: Int, y: Int): ByteArray? {
-        val file = fileFor(layerId, z, x, y)
-        return try {
-            if (file.isFile && file.length() > 0) file.readBytes() else null
-        } catch (e: IOException) {
-            null
-        }
-    }
-
-    fun write(layerId: String, z: Int, x: Int, y: Int, bytes: ByteArray) {
-        val file = fileFor(layerId, z, x, y)
-        try {
-            file.parentFile?.mkdirs()
-            // Write to a temp name first so a killed process never leaves a half tile behind.
-            val temp = File(file.parentFile, file.name + ".tmp")
-            temp.writeBytes(bytes)
-            if (!temp.renameTo(file)) {
-                temp.delete()
-            }
-        } catch (e: IOException) {
-            // A full or read-only cache directory must not break rendering.
-        }
-    }
-
-    private fun fileFor(layerId: String, z: Int, x: Int, y: Int): File =
-        File(root, "${sanitize(layerId)}/$z/$x/$y.tile")
-
-    private fun sanitize(id: String): String = id.map {
-        if (it.isLetterOrDigit() || it == '-' ||
-            it == '_'
-        ) {
-            it
-        } else {
-            '_'
-        }
-    }
-        .joinToString("")
-}
-
-/**
  * Adapter that makes a remote WMS endpoint look like any other [TileArchive], so
  * [LocalTileServer] (and therefore the calibration path) treats online and offline layers alike.
+ *
+ * Offline access comes from [CachedTileArchive] wrapping this one, not from anything in here.
  */
 class WmsTileArchive(
-    private val layerId: String,
     private val endpoint: String,
     private val wmsLayers: String,
     override val minZoom: Int = 0,
@@ -237,10 +202,7 @@ class WmsTileArchive(
     private val version: String = "1.3.0",
     private val format: String = "image/png",
     private val styles: String = "",
-    cacheDir: File? = null,
 ) : TileArchive {
-
-    private val cache = cacheDir?.let { OnlineTileCache(it) }
 
     override val contentType: String = format
 
@@ -256,12 +218,7 @@ class WmsTileArchive(
             format = format,
             styles = styles,
         )
-        val fresh = WmsTileRenderer.fetch(url)
-        if (fresh != null) {
-            cache?.write(layerId, z, x, y, fresh)
-            return fresh
-        }
-        return cache?.read(layerId, z, x, y)
+        return WmsTileRenderer.fetch(url)
     }
 
     /** Nothing to release: every request is a fresh connection. */
@@ -269,33 +226,25 @@ class WmsTileArchive(
 }
 
 /**
- * Adapter for plain XYZ / WMTS-RESTful templates, with the same offline fallback as
- * [WmsTileArchive].
+ * Adapter for plain XYZ / WMTS-RESTful templates.
+ *
+ * Caching is not its job -- [CachedTileArchive] wraps it, so this stays a pure "expand the
+ * template and fetch" adapter.
  */
 class XyzTileArchive(
-    private val layerId: String,
     private val template: String,
     override val minZoom: Int = 0,
     override val maxZoom: Int = 19,
     override val bounds: BBox? = null,
     override val contentType: String = "image/png",
     private val subdomains: String = "abc",
-    cacheDir: File? = null,
 ) : TileArchive {
-
-    private val cache = cacheDir?.let { OnlineTileCache(it) }
 
     override fun getTile(z: Int, x: Int, y: Int): ByteArray? {
         if (z < minZoom || z > maxZoom) return null
         val n = 1 shl z
         if (x < 0 || y < 0 || x >= n || y >= n) return null
-        val url = WmsTileRenderer.expandXyzTemplate(template, z, x, y, subdomains)
-        val fresh = WmsTileRenderer.fetch(url)
-        if (fresh != null) {
-            cache?.write(layerId, z, x, y, fresh)
-            return fresh
-        }
-        return cache?.read(layerId, z, x, y)
+        return WmsTileRenderer.fetch(WmsTileRenderer.expandXyzTemplate(template, z, x, y, subdomains))
     }
 
     override fun close() = Unit

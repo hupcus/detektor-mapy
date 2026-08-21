@@ -30,6 +30,15 @@ class AppDirectories(private val context: Context) {
     /** GPX files flushed from finished tracks. */
     val tracksDir: File get() = ensure(File(root, TRACKS))
 
+    /**
+     * Internal storage root.
+     *
+     * Used as the fallback when free space has to be measured: on some devices the app is not
+     * allowed to `statfs` the FUSE-mounted external path, and both live on the same partition
+     * anyway, so the number is the same one the user sees in system settings.
+     */
+    val internalRoot: File get() = ensure(context.filesDir)
+
     /** Scratch space for downloaded / rendered tiles; safe to delete at any time. */
     val tilesCacheDir: File get() = ensure(File(context.cacheDir, TILES))
 

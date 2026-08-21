@@ -24,6 +24,7 @@ object Routes {
     const val GCP_EDITOR = "gcp/{layerId}"
     const val TRACKS = "tracks"
     const val PREFLIGHT = "preflight"
+    const val STORAGE = "storage"
     const val ABOUT = "about"
     const val IMAGE_OVERLAY = "image-overlay"
     const val DETECTOR_ADVISOR = "detector/advisor"

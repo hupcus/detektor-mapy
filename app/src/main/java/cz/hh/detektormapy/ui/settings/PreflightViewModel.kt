@@ -15,6 +15,7 @@ import cz.hh.detektormapy.di.IoDispatcher
 import cz.hh.detektormapy.location.Fix
 import cz.hh.detektormapy.location.LocationProvider
 import cz.hh.detektormapy.map.LayerManager
+import cz.hh.detektormapy.net.PoliteHttp
 import cz.hh.detektormapy.util.Geo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -206,6 +207,9 @@ class PreflightViewModel @Inject constructor(
                 requestMethod = "GET"
                 connectTimeout = TIMEOUT_MS
                 readTimeout = TIMEOUT_MS
+                // Identify the app to open-meteo as well, not just to the map services: a
+                // public release that speaks to a free API anonymously is a free API's problem.
+                PoliteHttp.identify(this)
             }
             if (connection.responseCode !in 200..299) return@withContext null
             val body = connection.inputStream.bufferedReader().use(BufferedReader::readText)

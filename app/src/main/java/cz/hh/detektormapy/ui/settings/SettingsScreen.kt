@@ -141,6 +141,19 @@ fun SettingsScreen(navController: NavHostController) {
                 }
             }
             if (tab == 2) {
+                SettingsGroup("Offline mapy") {
+                    SwitchRow(
+                        title = "Ukládat mapy pro offline použití",
+                        subtitle = "Co si prohlédneš online, zůstane v telefonu i bez signálu",
+                        checked = state.preferences.cacheTiles,
+                        onCheckedChange = viewModel::setCacheTiles,
+                    )
+                    HorizontalDivider()
+                    NavigationRow(
+                        "Správa úložiště",
+                        "Kolik místa mapy zabírají a jak je smazat",
+                    ) { navController.navigate(Routes.STORAGE) }
+                }
                 DataGroup(
                     state = state,
                     onExport = { viewModel.exportAll() },

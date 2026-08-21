@@ -44,7 +44,11 @@ internal fun formatBytes(bytes: Long): String {
     val gb = bytes / (1024.0 * 1024.0 * 1024.0)
     if (gb >= 1.0) return String.format(CS_LOCALE, "%.1f GB", gb)
     val mb = bytes / (1024.0 * 1024.0)
-    return String.format(CS_LOCALE, "%.0f MB", mb)
+    if (mb >= 1.0) return String.format(CS_LOCALE, "%.0f MB", mb)
+    // The storage screen lists caches that are a few tiles old; rounding those to "0 MB" would
+    // read as "nothing is being saved", which is exactly the doubt the screen exists to settle.
+    if (bytes <= 0L) return "0 kB"
+    return String.format(CS_LOCALE, "%.0f kB", bytes / 1024.0)
 }
 
 internal fun fileProviderAuthority(context: Context): String = "${context.packageName}.fileprovider"

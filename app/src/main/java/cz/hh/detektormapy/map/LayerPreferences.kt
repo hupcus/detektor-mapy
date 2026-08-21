@@ -30,6 +30,10 @@ class LayerPreferences @Inject constructor(@param:ApplicationContext private val
         val showFinds: Boolean = true,
         val showPlaces: Boolean = true,
         val showAreas: Boolean = true,
+        /** Master switch for the write-through tile cache ("Ukládat mapy pro offline"). */
+        val cacheTiles: Boolean = true,
+        /** Layers the user opted out of caching individually; everything else caches. */
+        val cacheExcluded: Set<String> = emptySet(),
     )
 
     private val basemapKey = androidx.datastore.preferences.core.stringPreferencesKey("basemap")
@@ -39,10 +43,19 @@ class LayerPreferences @Inject constructor(@param:ApplicationContext private val
     private val showFindsKey = booleanPreferencesKey("show_finds")
     private val showPlacesKey = booleanPreferencesKey("show_places")
     private val showAreasKey = booleanPreferencesKey("show_areas")
+    private val cacheTilesKey = booleanPreferencesKey("cache_tiles")
 
     private fun visibleKey(id: String) = booleanPreferencesKey("vis_$id")
     private fun opacityKey(id: String) = floatPreferencesKey("op_$id")
     private fun orderKey(id: String) = intPreferencesKey("ord_$id")
+
+    /**
+     * Per-layer caching opt-out.
+     *
+     * Stored as an exclusion rather than an inclusion so that a layer added to the catalogue
+     * later is cached by default, exactly like every layer that came before it.
+     */
+    private fun cacheKey(id: String) = booleanPreferencesKey("cache_$id")
 
     val state: Flow<State> = context.layerDataStore.data.map { prefs -> prefs.toState() }
 
@@ -93,16 +106,31 @@ class LayerPreferences @Inject constructor(@param:ApplicationContext private val
         context.layerDataStore.edit { it[showAreasKey] = enabled }
     }
 
+    suspend fun setCacheTiles(enabled: Boolean) {
+        context.layerDataStore.edit { it[cacheTilesKey] = enabled }
+    }
+
+    suspend fun setCacheLayer(layerId: String, enabled: Boolean) {
+        context.layerDataStore.edit { it[cacheKey(layerId)] = enabled }
+    }
+
     private fun Preferences.toState(): State {
         val visible = mutableMapOf<String, Boolean>()
         val opacity = mutableMapOf<String, Float>()
         val order = mutableMapOf<String, Int>()
+        val cacheExcluded = mutableSetOf<String>()
         asMap().forEach { (key, value) ->
             val name = key.name
             when {
                 name.startsWith("vis_") -> (value as? Boolean)?.let { visible[name.removePrefix("vis_")] = it }
+
                 name.startsWith("op_") -> (value as? Float)?.let { opacity[name.removePrefix("op_")] = it }
+
                 name.startsWith("ord_") -> (value as? Int)?.let { order[name.removePrefix("ord_")] = it }
+
+                // "cache_tiles" is the master switch and must not be read as a layer id.
+                name.startsWith("cache_") && name != "cache_tiles" ->
+                    if (value == false) cacheExcluded += name.removePrefix("cache_")
             }
         }
         return State(
@@ -116,6 +144,8 @@ class LayerPreferences @Inject constructor(@param:ApplicationContext private val
             showFinds = this[showFindsKey] ?: true,
             showPlaces = this[showPlacesKey] ?: true,
             showAreas = this[showAreasKey] ?: true,
+            cacheTiles = this[cacheTilesKey] ?: true,
+            cacheExcluded = cacheExcluded,
         )
     }
 }

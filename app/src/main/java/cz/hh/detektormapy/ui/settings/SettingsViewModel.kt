@@ -143,6 +143,10 @@ class SettingsViewModel @Inject constructor(
         layerManager.setKeepScreenOn(enabled)
     }
 
+    fun setCacheTiles(enabled: Boolean) {
+        layerManager.setCacheTiles(enabled)
+    }
+
     // --- data ------------------------------------------------------------------------
 
     /** Writes the whole project into a zip in the exports directory (PLAN.md F2-5). */

@@ -180,6 +180,15 @@ class LocalTileServer(private val cacheBytes: Long = DEFAULT_CACHE_BYTES, privat
     /** Ids of every registered layer. */
     fun registeredLayers(): Set<String> = synchronized(layersLock) { layers.keys.toSet() }
 
+    /**
+     * Forgets a layer's in-memory tiles without touching its registration or generation.
+     *
+     * Used when the persistent cache behind a layer is deleted: without it the map would keep
+     * drawing from RAM the very tiles the user just asked to remove, and the freed space would
+     * look like it had no effect.
+     */
+    fun dropCachedTiles(layerId: String) = cache.evictLayer(layerId)
+
     // ------------------------------------------------------------------ serving
 
     private fun acceptLoop(socket: ServerSocket) {

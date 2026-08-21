@@ -25,11 +25,19 @@ Atribuce všech použitých zdrojů patří do about screen: ČÚZK, CENIA, UJEP
 státní archiv, OpenStreetMap, NPÚ, Jihočeský / Moravskoslezský / Karlovarský kraj,
 VÚGTK (Chartae-antiquae.cz).
 
-Podmínky pro **veřejné šíření** aplikace se řeší centrálně v issue **#34** (F6-6).
-Stav k 2026-08-20: Jihočeský kraj u WMTS otisků výslovně uvádí, že opětovné užití
-pro obchodní účely je zamezeno (ochranné znaky ČÚZK); Chartae Antiquae (VÚGTK) ani
-Karlovarský kraj podmínky u služby nepublikují — před veřejným vydáním je nutné se
-zeptat. Detaily v issue.
+Podmínky pro **veřejné šíření** aplikace se řeší v **F7-6 (#40)**, návrhy dopisů
+a archiv odpovědí jsou v `docs/legal/`. Stav k 2026-08-21: Jihočeský kraj u WMTS otisků
+výslovně uvádí, že opětovné užití pro obchodní účely je zamezeno (ochranné znaky ČÚZK);
+Chartae Antiquae (VÚGTK) ani Karlovarský kraj podmínky u služby nepublikují.
+**Odesláno zatím nic** — sloupec „veřejné šíření" níže proto u většiny zdrojů říká
+„nezjištěno", což podle pravidla v `docs/legal/README.md` znamená: živě ano, cache
+z prohlížení ano, hromadné stahování ne.
+
+**Jediná už rozhodnutá položka je OSM.** Tile Usage Policy OSMF (ověřeno 2026-08-21)
+vyžaduje identifikaci User-Agentem a lokální cache, ale **zakazuje** dopředné stahování
+oblastí a stavbu dlaždicových archivů (`.mbtiles` jmenovitě), včetně funkcí typu
+„stáhni oblast pro offline". `tile.openstreetmap.org` tedy nesmí zůstat výchozím
+podkladem veřejně šířené aplikace — viz `docs/legal/05-osmf.md` a issue #9.
 
 ---
 
@@ -52,30 +60,35 @@ zeptat. Detaily v issue.
   (`.github/workflows/endpoints.yml`).
 - **P1 / P2** — priorita. Výpadek ověřeného **P1** zdroje shodí `check_endpoints.py`
   (exit 1) a založí issue.
+- **veřejné šíření** — co smí veřejně vydaná aplikace. `živě` = jen zobrazení aktuálního
+  výřezu; `+cache` = smí si nechat, co uživatel viděl; `+hromadně` = smí stáhnout oblast
+  dopředu. `nezjištěno` znamená, že poskytovatel zatím neodpověděl, a platí nejpřísnější
+  výklad (živě + cache, hromadně ne). Zdroj pravdy jsou odpovědi v `docs/legal/`.
 
 ---
 
 ## Přehledová tabulka
 
-| id | název | typ | CRS | zoom | prio | stav ověřen |
-|---|---|---|---|---|---|---|
-| `ii_vm` | II. vojenské mapování 1836–52 (CENIA) | wmts | EPSG:3857 | 8–16 | P1 | 2026-08 (PLAN.md) |
-| `iii_vm` | III. voj. mapování — speciálky 1:75 000 (CENIA) | wmts | EPSG:3857 | 8–16 | P2 | 2026-08 (PLAN.md) |
-| `dmr5g` | DMR 5G — stínovaný reliéf (ČÚZK) | wms | EPSG:3857 | 10–17 | P1 | 2026-08 (PLAN.md) |
-| `ortofoto` | Ortofoto ČR (ČÚZK) | arcgis-wmts | EPSG:3857 | 10–18 | P1 | 2026-08 (PLAN.md) |
-| `cisarske_jck` | Císařské otisky — Jihočeský kraj | arcgis-wmts | EPSG:5514 | 10–18 | P2 | 2026-08 (PLAN.md) |
-| `cisarske_msk` | Císařské otisky — Moravskoslezský kraj | arcgis-wmts | EPSG:5514 | 10–18 | P2 | 2026-08 (PLAN.md) |
-| `cisarske_kvk` | Císařské otisky — Karlovarský kraj | arcgis-rest | EPSG:5514 | 10–18 | P2 | **ověřeno 2026-08-20** |
-| `muller_cechy` | Müllerova mapa Čech 1720 (Chartae Antiquae) | xyz | EPSG:3857 | 5–14 | P2 | **ověřeno 2026-08-20** |
-| `muller_morava` | Müllerova mapa Moravy 1716 (Chartae Antiquae) | xyz | EPSG:3857 | 5–14 | P2 | **ověřeno 2026-08-20** |
-| `vm1_chartae` | I. vojenské mapování 1764–68 (Chartae Antiquae) | xyz | EPSG:3857 | 5–15 | P2 | **ověřeno 2026-08-20** |
-| `vm2_chartae` | II. vojenské mapování — online (Chartae Antiquae) | xyz | EPSG:3857 | 5–16 | P2 | **ověřeno 2026-08-20** |
-| `vm3_topo_chartae` | III. VM 1:25 000 — topografické sekce (Chartae) | xyz | EPSG:3857 | 5–16 | P2 | **ověřeno 2026-08-20** |
-| `ortofoto_wm` | Ortofoto ČR — nativní WM cache (ČÚZK) | xyz | EPSG:3857 | 7–20 | P1 | **ověřeno 2026-08-20** |
-| `ztm_wm` | Základní topografická mapa — WM cache (ČÚZK) | xyz | EPSG:3857 | 4–19 | P2 | **ověřeno 2026-08-20** |
-| `ii_vm_ujep` | II. VM — záloha (oldmaps geolab, UJEP) | wms | EPSG:4326 | 8–15 | P2 | 2026-08-20 — **mrtvý** (3. timeout) |
-| `uan_npu` | ÚAN — území s archeologickými nálezy (NPÚ) | arcgis-rest | EPSG:5514 | 8–16 | P1 | ověřeno 2026-08-20 |
-| `dmr5g_atom` | DMR 5G — surová LAZ data (ČÚZK ATOM) | atom | EPSG:5514 | 12–18 | P2 | 2026-08 (PLAN.md) |
+| id | název | typ | CRS | zoom | prio | stav ověřen | veřejné šíření |
+|---|---|---|---|---|---|---|---|
+| `ii_vm` | II. vojenské mapování 1836–52 (CENIA) | wmts | EPSG:3857 | 8–16 | P1 | 2026-08 (PLAN.md) | nezjištěno (P3 — nahrazeno chartae) |
+| `iii_vm` | III. voj. mapování — speciálky 1:75 000 (CENIA) | wmts | EPSG:3857 | 8–16 | P2 | 2026-08 (PLAN.md) | nezjištěno (P3 — nahrazeno chartae) |
+| `dmr5g` | DMR 5G — stínovaný reliéf (ČÚZK) | wms | EPSG:3857 | 10–17 | P1 | 2026-08 (PLAN.md) | nezjištěno — čeká na ČÚZK |
+| `ortofoto` | Ortofoto ČR (ČÚZK) | arcgis-wmts | EPSG:3857 | 10–18 | P1 | 2026-08 (PLAN.md) | nezjištěno — čeká na ČÚZK |
+| `cisarske_jck` | Císařské otisky — Jihočeský kraj | arcgis-wmts | EPSG:5514 | 10–18 | P2 | 2026-08 (PLAN.md) | nezjištěno — JčK zakazuje obchodní užití |
+| `cisarske_msk` | Císařské otisky — Moravskoslezský kraj | arcgis-wmts | EPSG:5514 | 10–18 | P2 | 2026-08 (PLAN.md) | nezjištěno — čeká na MSK |
+| `cisarske_kvk` | Císařské otisky — Karlovarský kraj | arcgis-rest | EPSG:5514 | 10–18 | P2 | **ověřeno 2026-08-20** | nezjištěno — čeká na KVK |
+| `muller_cechy` | Müllerova mapa Čech 1720 (Chartae Antiquae) | xyz | EPSG:3857 | 5–14 | P2 | **ověřeno 2026-08-20** | nezjištěno — čeká na VÚGTK |
+| `muller_morava` | Müllerova mapa Moravy 1716 (Chartae Antiquae) | xyz | EPSG:3857 | 5–14 | P2 | **ověřeno 2026-08-20** | nezjištěno — čeká na VÚGTK |
+| `vm1_chartae` | I. vojenské mapování 1764–68 (Chartae Antiquae) | xyz | EPSG:3857 | 5–15 | P2 | **ověřeno 2026-08-20** | nezjištěno — čeká na VÚGTK |
+| `vm2_chartae` | II. vojenské mapování — online (Chartae Antiquae) | xyz | EPSG:3857 | 5–16 | P2 | **ověřeno 2026-08-20** | nezjištěno — čeká na VÚGTK |
+| `vm3_topo_chartae` | III. VM 1:25 000 — topografické sekce (Chartae) | xyz | EPSG:3857 | 5–16 | P2 | **ověřeno 2026-08-20** | nezjištěno — čeká na VÚGTK |
+| `ortofoto_wm` | Ortofoto ČR — nativní WM cache (ČÚZK) | xyz | EPSG:3857 | 7–20 | P1 | **ověřeno 2026-08-20** | nezjištěno — čeká na ČÚZK |
+| `ztm_wm` | Základní topografická mapa — WM cache (ČÚZK) | xyz | EPSG:3857 | 4–19 | P2 | **ověřeno 2026-08-20** | nezjištěno — čeká na ČÚZK |
+| `ii_vm_ujep` | II. VM — záloha (oldmaps geolab, UJEP) | wms | EPSG:4326 | 8–15 | P2 | 2026-08-20 — **mrtvý** (3. timeout) | n/a — mrtvý |
+| `uan_npu` | ÚAN — území s archeologickými nálezy (NPÚ) | arcgis-rest | EPSG:5514 | 8–16 | P1 | ověřeno 2026-08-20 | nezjištěno — čeká na NPÚ |
+| `dmr5g_atom` | DMR 5G — surová LAZ data (ČÚZK ATOM) | atom | EPSG:5514 | 12–18 | P2 | 2026-08 (PLAN.md) | nezjištěno — čeká na ČÚZK |
+| `osm` | OpenStreetMap (výchozí podklad) | xyz | EPSG:3857 | 0–19 | P1 | používá se od F1 | **živě + cache, hromadně NE; jako default zakázáno** — viz #9 |
 
 ---
 

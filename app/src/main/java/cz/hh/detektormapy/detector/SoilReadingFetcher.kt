@@ -2,6 +2,7 @@ package cz.hh.detektormapy.detector
 
 import android.util.Log
 import cz.hh.detektormapy.di.IoDispatcher
+import cz.hh.detektormapy.net.PoliteHttp
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -43,6 +44,9 @@ class SoilReadingFetcher @Inject constructor(@param:IoDispatcher private val io:
                 requestMethod = "GET"
                 connectTimeout = TIMEOUT_MS
                 readTimeout = TIMEOUT_MS
+                // Identify the app to open-meteo as well, not just to the map services: a
+                // public release that speaks to a free API anonymously is a free API's problem.
+                PoliteHttp.identify(this)
             }
             if (connection.responseCode !in 200..299) return@withContext null
             val body = connection.inputStream.bufferedReader().use(BufferedReader::readText)
