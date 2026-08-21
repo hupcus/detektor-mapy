@@ -16,6 +16,7 @@ object MapStyle {
     const val LAYER_AREAS_LINE = "app-areas-line"
     const val LAYER_UAN_FILL = "app-uan-fill"
     const val LAYER_UAN_LINE = "app-uan-line"
+    const val LAYER_TRACK_CASING = "app-track-casing"
     const val LAYER_TRACK = "app-track"
     const val LAYER_PLACES = "app-places"
     const val LAYER_FINDS = "app-finds"

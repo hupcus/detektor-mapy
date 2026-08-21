@@ -1,5 +1,6 @@
 package cz.hh.detektormapy.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +44,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import cz.hh.detektormapy.data.entity.TrackEntity
+import cz.hh.detektormapy.ui.nav.Routes
 
 /**
  * List of recorded walks with their GPX export (PLAN.md F4-1).
@@ -144,6 +146,7 @@ fun TracksScreen(navController: NavHostController) {
                 items(state.tracks, key = { it.id }) { track ->
                     TrackRow(
                         track = track,
+                        onOpen = { navController.navigate(Routes.trackDetail(track.id)) },
                         onRename = { renaming = track },
                         onExport = { viewModel.exportGpx(track) },
                         onDelete = { pendingDelete = track },
@@ -185,8 +188,15 @@ fun TracksScreen(navController: NavHostController) {
 }
 
 @Composable
-private fun TrackRow(track: TrackEntity, onRename: () -> Unit, onExport: () -> Unit, onDelete: () -> Unit) {
-    Card(Modifier.fillMaxWidth()) {
+private fun TrackRow(
+    track: TrackEntity,
+    onOpen: () -> Unit,
+    onRename: () -> Unit,
+    onExport: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    // The whole card opens the walk on the map; the icons keep their own hit targets.
+    Card(Modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Row(
             Modifier
                 .fillMaxWidth()

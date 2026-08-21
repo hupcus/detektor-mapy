@@ -253,10 +253,22 @@ fun MapScreen(navController: NavHostController, viewModel: MapViewModel = hiltVi
         LaunchedEffect(state.fix, state.followMode) {
             val fix = state.fix ?: return@LaunchedEffect
             if (!state.followMode) return@LaunchedEffect
-            mapRef?.animateCamera(
-                CameraUpdateFactory.newLatLng(LatLng(fix.lat, fix.lon)),
-                600,
-            )
+            val map = mapRef ?: return@LaunchedEffect
+            val zoom = map.cameraPosition.zoom
+            // Recentring alone is not enough on the first fix. The map opens on the whole
+            // country, and at that scale everything sized in metres -- the recorded trail
+            // above all -- is thinner than a pixel, while the position dot keeps its fixed
+            // pixel size and shows up regardless. The result reads as "the trail is not being
+            // drawn" when it is being drawn perfectly, just a hundred metres wide on a screen
+            // showing six hundred kilometres. So the first fix also pulls the camera down to a
+            // scale you could actually walk at; any zoom the user has chosen themselves is
+            // left alone.
+            val update = if (zoom < MIN_FOLLOW_ZOOM) {
+                CameraUpdateFactory.newLatLngZoom(LatLng(fix.lat, fix.lon), WALKING_ZOOM)
+            } else {
+                CameraUpdateFactory.newLatLng(LatLng(fix.lat, fix.lon))
+            }
+            map.animateCamera(update, 600)
         }
         LaunchedEffect(state.headingDeg, state.rotateWithCompass) {
             val heading = state.headingDeg ?: return@LaunchedEffect
@@ -490,3 +502,15 @@ fun MapLibreMap.screenDeltaToMercator(from: PointF, pan: PointF): Pair<Double, D
     val dy = WebMercator.latToMeters(end.latitude) - WebMercator.latToMeters(start.latitude)
     return dx to dy
 }
+
+/**
+ * Below this zoom, "follow my position" also zooms in.
+ *
+ * The map starts framed on the whole country, which is the right first impression and the wrong
+ * place to stand: a walk is hundreds of metres, and hundreds of metres at zoom 7 is less than a
+ * pixel.
+ */
+private const val MIN_FOLLOW_ZOOM = 13.0
+
+/** Roughly "one field on screen" — the scale you sweep at. */
+private const val WALKING_ZOOM = 16.5

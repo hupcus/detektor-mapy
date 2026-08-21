@@ -9,6 +9,35 @@ Typy změn: `Přidáno`, `Změněno`, `Zastaralé`, `Odebráno`, `Opraveno`, `Be
 
 ## [Nezveřejněno]
 
+## [0.6.0] — 2026-08-21
+
+### Opraveno
+- **Stopa pochůzky se konečně kreslí tam, kde ji hledáš.** Nekreslila se ne proto, že by
+  chyběla, ale proto, že mapa startuje nad celou republikou — a pár set metrů chůze je
+  na takovém měřítku užší než pixel, zatímco bod polohy je vidět vždycky. Sledování
+  polohy teď při prvním fixu přiblíží na měřítko, ve kterém se chodí. Zoom, který sis
+  nastavil sám, zůstane.
+- **Stopa už nekončí kus za tebou.** Body se zapisovaly po deseti nebo po půl minutě
+  a do té doby o nich mapa nevěděla, takže posledních pár desítek metrů chybělo.
+- **Stopa je vidět i nad rytinou a ortofotem** — má pod sebou světlý lem, takže si
+  drží stejnou siluetu nad jakýmkoli podkladem.
+
+### Přidáno
+- **Náhled uložené pochůzky na mapě.** Klepnutím na pochůzku v seznamu uvidíš, kudy jsi
+  šel — trasa nad skutečným podkladem, zelená tečka start, černá cíl, a pod mapou datum,
+  nachozená vzdálenost a počet bodů.
+- **Pojistka proti klubku při stání.** Když kopeš nález, GPS si dál vymýšlí polohu
+  a stopa se dřív u díry zamotala do chuchvalce. Nový bod se zakreslí, až se opravdu
+  posuneš (nejméně 10 m, a víc, když je signál slabý), a potvrdí to až další měření —
+  takže jeden ustřelený fix trasu nevykopne do strany a zpátky.
+- **Nastavení → Ostatní → Verze a autor**: číslo verze, tlačítko *Zkontrolovat
+  aktualizaci*, odkaz na changelog a kontakt na autora. Kontrola se ptá GitHubu jen
+  na klepnutí — nic neběží na pozadí.
+
+### Změněno
+- Aplikace se neaktualizuje sama a nově to říká nahlas: v README i v aplikaci je
+  poznámka, že každou novou verzi je nutné stáhnout a nainstalovat ručně.
+
 ## [0.5.0] — 2026-08-21
 
 První veřejně vydaná verze. Repozitář je od téhle verze otevřený pod GPL-3.0.

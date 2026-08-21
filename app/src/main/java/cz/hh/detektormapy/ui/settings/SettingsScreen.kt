@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import cz.hh.detektormapy.BuildConfig
 import cz.hh.detektormapy.data.export.ExportResult
 import cz.hh.detektormapy.data.export.ImportResult
 import cz.hh.detektormapy.map.LayerUiState
@@ -179,6 +180,11 @@ fun SettingsScreen(navController: NavHostController) {
                     NavigationRow("O aplikaci a atribuce", "Zdroje dat, licence, právní minimum") {
                         navController.navigate(Routes.ABOUT)
                     }
+                    HorizontalDivider()
+                    NavigationRow(
+                        "Verze a autor",
+                        "verze ${BuildConfig.VERSION_NAME} • zkontrolovat aktualizaci",
+                    ) { navController.navigate(Routes.VERSION) }
                 }
             }
         }
@@ -439,7 +445,7 @@ private fun SwitchRow(title: String, subtitle: String, checked: Boolean, onCheck
 }
 
 @Composable
-private fun NavigationRow(title: String, subtitle: String, onClick: () -> Unit) {
+internal fun NavigationRow(title: String, subtitle: String, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()

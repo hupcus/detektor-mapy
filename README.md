@@ -92,8 +92,17 @@ zapni **Povolit z tohoto zdroje** a vrať se zpátky.
 **7.** Klepni na 🗂 vpravo nahoře a zapni si historickou mapu.
 Začni **II. vojenským mapováním**, je nejvýraznější.
 
-Hotovo. Aktualizace stahuješ stejně. Kdo chce mít pokoj, přidá si repozitář do
-[Obtainium](https://github.com/ImranR98/Obtainium) a aktualizace chodí samy.
+Hotovo.
+
+> **Aplikace se sama neaktualizuje.** Není v žádném obchodě, takže o nové verzi se
+> nedozvíš a nepřijde ti sama. **Každou novou verzi si musíš stáhnout a nainstalovat
+> ručně**, přesně stejným postupem jako tuhle první — data, nálezy ani stažené mapy
+> o nic nepřijdou.
+>
+> V aplikaci najdeš v **Nastavení → Verze** tlačítko *Zkontrolovat aktualizaci*, které
+> se podívá, jestli tu není něco novějšího, a pošle tě rovnou na stránku s changelogem.
+> Kdo to nechce řešit vůbec, přidá si repozitář do
+> [Obtainium](https://github.com/ImranR98/Obtainium) a aktualizace chodí samy.
 
 > **Google Play Protect** může u ručně instalované aplikace hlásit varování. To je
 > standardní hláška u všeho mimo obchod, ne nález něčeho škodlivého. Kdo nechce věřit
@@ -152,6 +161,14 @@ odvozená verze zůstane taky otevřená, ať z toho má komunita užitek dál.
 - 🐛 **Chyba nebo nápad?** → [issue](../../issues)
 - 🔧 **Chceš přispět kódem?** → pull requesty vítám, testy prosím taky
 - 🍴 **Chceš to převzít nebo forknout?** → posluž si, o to jde
+
+### Autor
+
+**Honza Hubka** — [honzahubka.cz](https://honzahubka.cz) ·
+[LinkedIn](https://www.linkedin.com/in/honzahubka/)
+
+Stejné odkazy najdeš i v aplikaci v **Nastavení → Verze**, spolu s číslem verze
+a tlačítkem na kontrolu aktualizací.
 
 ## Co zatím neumí
 

@@ -209,6 +209,9 @@ class TrackRecordingService : LifecycleService() {
     /** Flushes the tail of the buffer, writes the GPX file and closes the row in Room. */
     private suspend fun finishTrack(id: Long, startedAt: Long) {
         flushMutex.withLock {
+            // finalPoint() before draining: it commits the position the walk actually ended at
+            // into the buffer, which would otherwise stop a threshold short of it.
+            recorder?.finalPoint()
             val remaining = recorder?.drainPending().orEmpty()
             if (remaining.isNotEmpty()) {
                 tracksRepository.appendPoints(remaining.map { it.toPoint(id) })

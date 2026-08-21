@@ -82,7 +82,8 @@ class TrackRecorderTest {
             assertThat(decision.accepted).isTrue()
         }
 
-        assertThat(recorder.pointCount).isEqualTo(21)
+        // Every fix is accepted, but only every tenth metre becomes a vertex of the trail.
+        assertThat(recorder.pointCount).isEqualTo(10)
         assertThat(recorder.totalDistanceM).isWithin(1.0).of(100.0)
         assertThat(recorder.durationMs(startMillis + 20_000L)).isEqualTo(20_000L)
     }
@@ -108,11 +109,11 @@ class TrackRecorderTest {
     }
 
     @Test
-    fun `signals a flush every ten points`() {
+    fun `signals a flush every few points, so the trail keeps up with the walk`() {
         val recorder = TrackRecorder()
         val flushed = mutableListOf<Int>()
 
-        repeat(20) { step ->
+        repeat(12) { step ->
             val decision = recorder.offer(
                 fix(offsetMetres = step * 5.0, atMillis = startMillis + step * 1_000L),
             )
@@ -121,7 +122,9 @@ class TrackRecorderTest {
             }
         }
 
-        assertThat(flushed).containsExactly(10, 10).inOrder()
+        // Nothing is on the map until it is flushed, so the batch stays small on purpose: the
+        // stretch you just walked is exactly the stretch you look down to check.
+        assertThat(flushed).containsExactly(3, 3).inOrder()
         assertThat(recorder.pending()).isEmpty()
     }
 
@@ -130,18 +133,38 @@ class TrackRecorderTest {
         val recorder = TrackRecorder()
         recorder.offer(fix())
 
-        // Standing still at the 30 s idle cadence: only two points, but half a minute of them.
-        val decision = recorder.offer(fix(offsetMetres = 1.0, atMillis = startMillis + 30_000L))
+        // Two vertices, a slow half minute apart: the time budget gets them written even though
+        // the batch never fills.
+        recorder.offer(fix(offsetMetres = 15.0, atMillis = startMillis + 30_000L))
+        val decision = recorder.offer(fix(offsetMetres = 30.0, atMillis = startMillis + 60_000L))
 
         assertThat(decision.shouldFlush).isTrue()
         assertThat(recorder.drainPending()).hasSize(2)
     }
 
     @Test
+    fun `a buffer with nothing in it is never worth flushing`() {
+        val recorder = TrackRecorder()
+        recorder.offer(fix())
+        recorder.drainPending()
+
+        // Standing still for minutes: the time budget passes over and over, but there is
+        // nothing to write and waking the database would be pure waste.
+        repeat(5) { step ->
+            val decision = recorder.offer(
+                fix(offsetMetres = 2.0, atMillis = startMillis + (step + 1) * 30_000L),
+            )
+            assertThat(decision.shouldFlush).isFalse()
+        }
+    }
+
+    @Test
     fun `drain empties the buffer without touching the totals`() {
         val recorder = TrackRecorder()
-        repeat(3) { step ->
-            recorder.offer(fix(offsetMetres = step * 5.0, atMillis = startMillis + step * 1_000L))
+        // 0, 15, 30, 45 m: every step clears the threshold, so every step is a vertex once
+        // the one behind it is confirmed.
+        repeat(4) { step ->
+            recorder.offer(fix(offsetMetres = step * 15.0, atMillis = startMillis + step * 3_000L))
         }
 
         val drained = recorder.drainPending()
@@ -149,7 +172,87 @@ class TrackRecorderTest {
         assertThat(drained).hasSize(3)
         assertThat(recorder.pending()).isEmpty()
         assertThat(recorder.pointCount).isEqualTo(3)
-        assertThat(recorder.totalDistanceM).isWithin(1.0).of(10.0)
-        assertThat(recorder.lastFix?.timestamp).isEqualTo(startMillis + 2_000L)
+        assertThat(recorder.totalDistanceM).isWithin(1.0).of(45.0)
+        assertThat(recorder.lastFix?.timestamp).isEqualTo(startMillis + 9_000L)
+    }
+
+    // --- standing still ------------------------------------------------------------
+
+    @Test
+    fun `digging in one spot adds no points to the trail`() {
+        val recorder = TrackRecorder()
+        recorder.offer(fix())
+        assertThat(recorder.pointCount).isEqualTo(1)
+
+        // Five minutes over a hole. The receiver reports a different position every time,
+        // wandering by its own accuracy, but the user has not gone anywhere.
+        val wander = listOf(2.0, 5.0, 1.0, 7.0, 3.0, 6.0, 2.0, 4.0)
+        wander.forEachIndexed { index, offset ->
+            val decision = recorder.offer(
+                fix(offsetMetres = offset, atMillis = startMillis + (index + 1) * 30_000L),
+            )
+            assertThat(decision.accepted).isTrue()
+            assertThat(decision.stored).isFalse()
+        }
+
+        assertThat(recorder.pointCount).isEqualTo(1)
+        assertThat(recorder.pending()).hasSize(1)
+    }
+
+    @Test
+    fun `walking away from the hole starts drawing again`() {
+        val recorder = TrackRecorder()
+        recorder.offer(fix())
+        repeat(4) { recorder.offer(fix(offsetMetres = 3.0, atMillis = startMillis + (it + 1) * 30_000L)) }
+        assertThat(recorder.pointCount).isEqualTo(1)
+
+        // Off again: the first fix past the threshold waits for confirmation, the second
+        // confirms it.
+        val first = recorder.offer(fix(offsetMetres = 15.0, atMillis = startMillis + 160_000L))
+        assertThat(first.stored).isFalse()
+        val second = recorder.offer(fix(offsetMetres = 30.0, atMillis = startMillis + 170_000L))
+        assertThat(second.stored).isTrue()
+        assertThat(recorder.pointCount).isEqualTo(2)
+    }
+
+    @Test
+    fun `a lone GPS outlier never reaches the trail`() {
+        val recorder = TrackRecorder()
+        recorder.offer(fix())
+
+        // One wild position 40 m away, then straight back to where we were standing.
+        val spike = recorder.offer(fix(offsetMetres = 40.0, atMillis = startMillis + 30_000L))
+        assertThat(spike.stored).isFalse()
+        val back = recorder.offer(fix(offsetMetres = 2.0, atMillis = startMillis + 60_000L))
+        assertThat(back.stored).isFalse()
+
+        assertThat(recorder.pointCount).isEqualTo(1)
+    }
+
+    @Test
+    fun `poor accuracy raises the bar before a point is drawn`() {
+        val recorder = TrackRecorder(minStoreDistanceM = 10.0)
+        recorder.offer(fix(accuracyM = 25f))
+
+        // 15 m of "movement" reported with 25 m of uncertainty is not movement.
+        recorder.offer(fix(offsetMetres = 15.0, accuracyM = 25f, atMillis = startMillis + 30_000L))
+        recorder.offer(fix(offsetMetres = 18.0, accuracyM = 25f, atMillis = startMillis + 60_000L))
+
+        assertThat(recorder.pointCount).isEqualTo(1)
+    }
+
+    @Test
+    fun `stopping the recording draws the last position walked to`() {
+        val recorder = TrackRecorder()
+        recorder.offer(fix())
+        recorder.offer(fix(offsetMetres = 15.0, atMillis = startMillis + 10_000L))
+        // One vertex so far: the 15 m fix is still an unconfirmed candidate.
+        assertThat(recorder.pointCount).isEqualTo(1)
+
+        assertThat(recorder.finalPoint()).isNotNull()
+
+        assertThat(recorder.pointCount).isEqualTo(2)
+        // Idempotent: a second call has nothing left to add.
+        assertThat(recorder.finalPoint()).isNull()
     }
 }

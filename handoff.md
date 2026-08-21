@@ -703,3 +703,97 @@ Debug build `cz.hh.detektormapy.debug`, release v0.4.0 uživatele nedotčena.
 v0.5.0 (versionCode 6). CHANGELOG má sekci 0.5.0, která shrnuje offline cache,
 správu úložiště, slušný HTTP klient, změnu podkladu a licenci. Předchozí 0.4.0 se
 jako release nikdy nevydala — její obsah zůstává v CHANGELOGu pod ní.
+
+## Stopa pochůzky: proč nebyla vidět, a náhled uložených tras (2026-08-21)
+
+Uživatel nahlásil, že při zapnutém nahrávání se **červená čára vůbec nekreslila**.
+
+### Kořen: mapa stála na zoomu celé republiky
+
+Čára i její data byla celou dobu v pořádku — `LAYER_TRACK` existuje od F4,
+`MapViewModel` ji plní z `observePoints` aktivní trasy a na emulátoru se vykreslila
+napoprvé. Skutečná příčina je jinde: **„Sledovat polohu" mapu jen vystředilo, nikdy
+nepřiblížilo** (`CameraUpdateFactory.newLatLng`, žádný zoom). Aplikace startuje na
+`MapCamera.CZECHIA`, tedy zoom 7. Pochůzka dlouhá pár set metrů je na zoomu 7 užší
+než pixel, zatímco **bod polohy má pevnou pixelovou velikost a vidět je vždycky** —
+takže to vypadá jako „tečka jede, čára se nekreslí".
+
+Reprodukováno na emulátoru: po studeném startu s běžícím nahráváním čára neviditelná;
+po devíti klepnutích na „Přiblížit" se objevila, celá a správná.
+
+**Oprava:** první fix při zapnutém sledování stáhne kameru na `WALKING_ZOOM` (16.5),
+pokud je zoom pod `MIN_FOLLOW_ZOOM` (13). Zoom, který si uživatel nastavil sám, se
+nikdy nepřebíjí.
+
+### Druhá věc: čára končila kus za tečkou
+
+`TrackRecorder` držel body v bufferu a zapisoval je po **10 bodech nebo 30 s**. Na
+mapě nic neexistuje, dokud se nezapíše (mapa čte trasu z Room), takže posledních
+~25–50 m chůze — právě ten úsek, kvůli kterému se člověk dívá na displej — chybělo.
+Nově **3 body / 6 s**. Pár řádků do SQLite je proti GPS wakeupu, který je vyrobil,
+zadarmo.
+
+### Třetí věc: čitelnost
+
+Jedna tenká tmavě červená linka zapadne do vrstevnicové mapy i do rytiny z roku 1720.
+Nově dvě vrstvy: `LAYER_TRACK_CASING` (světlý lem, šířka +3) pod `LAYER_TRACK`
+(červená `0xFFD32F2F`, šířka 5). Stopa má konstantní siluetu nad čímkoli.
+
+### Náhled uložené trasy — „kudy jsem šel"
+
+Klepnutí na pochůzku v seznamu otevře `ui/settings/TrackDetailScreen.kt`: trasa nad
+skutečným podkladem, zelená tečka start, černá cíl, kamera nafitovaná na rozsah trasy,
+pod mapou datum / nachozeno / počet bodů / název podkladu.
+
+- Podklad se bere ze **stejného `LayerManager` a lokálního tile serveru** jako hlavní
+  mapa, takže prohlížení doma nad ZTM i v terénu z offline cache je jedna cesta kódem.
+- Mapa se staví ručně, ne přes `MapController` — ten existuje kvůli živé mapě
+  (nahrávání, kalibrace, editace vrstev) a nic z toho tu neplatí.
+- `location/TrackGeometry.boundsOf()` je čistá funkce s testy. Hlídá degenerovaný
+  případ: trasa bez pohybu má nulovou plochu a `newLatLngBounds` na ni odpoví
+  nesmyslným zoomem, takže každý rámeček má minimum ~100 m.
+
+### Ověřeno na emulátoru (API 36)
+
+Nasimulovaná chůze `adb emu geo fix`: 35 bodů v DB, čára se kreslí živě, přežije
+odchod aplikace na pozadí i návrat, po studeném startu se mapa sama přiblíží
+a stopa je hned vidět. Detail trasy vykreslil 0,50 km z 35 bodů nad ZTM.
+
+### Co zůstává (nesouvisí se zadáním)
+
+`TrackEntity` má denormalizované statistiky, které se zapisují až při ukončení
+záznamu — v seznamu proto běžící pochůzka ukazuje „0 bodů" a „0,00 km". Detail trasy
+počítá z bodů, takže tam je číslo správně.
+
+## Stání na místě, náhled tras, obrazovka Verze (v0.6.0, 2026-08-21)
+
+- **Pojistka proti klubku při stání** — `TrackRecorder` nově zakresluje bod, až když se
+  uživatel opravdu posunul: prahem je `max(10 m, přesnost fixu)` od **posledního
+  zakresleného** bodu, ne od posledního fixu. Práh škálovaný přesností je podstatný —
+  pod korunami stromů je „10m krok" často čirý šum a pevný práh by nakreslil přesně to
+  klubko, kterému má bránit.
+- **Potvrzení dalším měřením** — bod, který práh překročí, čeká jako `candidate` na
+  další fix. Osamocený výstřel GPS se vrátí zpátky, spadne do větve „pořád u poslední
+  kotvy" a kandidát se zahodí, takže se do trasy nikdy nedostane. Stopa tím zaostává
+  o jedno měření (pár vteřin), což je na pomůcce „byl jsem tu už?" zadarmo.
+- Po potvrzení se aktuální fix **přeměřuje proti nové kotvě**. Bez toho by byl kandidát
+  vždy o krok za kotvou a rozestupy by vycházely podle vzorkování, ne podle prahu.
+- `finalPoint()` při ukončení dokreslí místo, kde chůze reálně skončila — konec čáry je
+  přesně to, na co se člověk dívá, když zjišťuje, kde přestal.
+- `Decision` má nově `stored`, aby služba i testy rozeznaly „fix přijat" od „bod
+  zakreslen"; `pointCount` počítá vrcholy trasy, ne přijaté fixy.
+
+**Obrazovka Verze — proč není záložka.** Nejdřív vznikla jako pátá záložka Nastavení
+a uživatel hned narazil na to, že je useknutá za okrajem. Půlka popisku za hranou
+nečte jako „scrolluj mě", ale jako rozbité okno. Záložky jsou na rovnocenné oblasti,
+mezi kterými se přepíná často; tohle je koncová stránka otvíraná dvakrát za rok. Je
+tedy `Routes.VERSION` pod **Ostatní → O aplikaci → Verze a autor**, kde má číslo verze
+rovnou v podtitulu řádku, takže je vidět bez klepnutí. Nastavení má zpátky čtyři
+záložky, které se vejdou.
+
+**Kontrola aktualizací** (`net/UpdateChecker.kt`) se ptá GitHub API na `releases/latest`
+**jen na klepnutí** — nic neběží na pozadí, aby slib „nic neodesíláme bez vyžádání"
+platil i pro tohle. Prochází `PoliteHttp`, takže nese User-Agent a respektuje backoff;
+403 od GitHubu (anonymní rate limit) se bere jako „zkus později", ne jako chyba.
+Porovnání verzí je čistá funkce `net/AppVersion.kt` s testy: kdo si aplikaci sám
+přeložil a běží před posledním release, nikdy nedostane nabídku „downgraduj".

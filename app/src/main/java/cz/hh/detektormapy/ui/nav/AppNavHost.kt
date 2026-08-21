@@ -21,7 +21,9 @@ import cz.hh.detektormapy.ui.settings.CalibrationListScreen
 import cz.hh.detektormapy.ui.settings.PreflightScreen
 import cz.hh.detektormapy.ui.settings.SettingsScreen
 import cz.hh.detektormapy.ui.settings.StorageScreen
+import cz.hh.detektormapy.ui.settings.TrackDetailScreen
 import cz.hh.detektormapy.ui.settings.TracksScreen
+import cz.hh.detektormapy.ui.settings.VersionScreen
 
 @Composable
 fun AppNavHost(navController: NavHostController) {
@@ -67,9 +69,16 @@ fun AppNavHost(navController: NavHostController) {
         }
         composable(Routes.IMAGE_OVERLAY) { ImageOverlayScreen(navController) }
         composable(Routes.TRACKS) { TracksScreen(navController) }
+        composable(
+            Routes.TRACK_DETAIL,
+            arguments = listOf(navArgument("trackId") { type = NavType.LongType }),
+        ) {
+            TrackDetailScreen(navController)
+        }
         composable(Routes.PREFLIGHT) { PreflightScreen(navController) }
         composable(Routes.ABOUT) { AboutScreen(navController) }
         composable(Routes.STORAGE) { StorageScreen(navController) }
+        composable(Routes.VERSION) { VersionScreen(navController) }
         composable(Routes.DETECTOR_ADVISOR) { DetectorAdvisorScreen(navController) }
         composable(Routes.DETECTOR_PROFILES) { DetectorProfilesScreen(navController) }
     }

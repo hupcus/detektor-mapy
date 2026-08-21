@@ -405,13 +405,27 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
                 PropertyFactory.lineWidth(2f),
             ),
         )
+        // Two layers, not one. The trail has to stay readable over a 1720 engraving, an
+        // orthophoto and a contour map alike, and a single red line vanishes into all three --
+        // it is the one thing on screen that answers "have I already swept here?", so it must
+        // never be the thing you have to hunt for. A pale casing underneath gives it a constant
+        // silhouette whatever it is drawn over.
+        style.addLayer(
+            LineLayer(MapStyle.LAYER_TRACK_CASING, MapStyle.SOURCE_TRACK).withProperties(
+                PropertyFactory.lineColor(TRACK_CASING_COLOR),
+                PropertyFactory.lineWidth(TRACK_WIDTH + 3f),
+                PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+                PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
+                PropertyFactory.lineOpacity(0.75f),
+            ),
+        )
         style.addLayer(
             LineLayer(MapStyle.LAYER_TRACK, MapStyle.SOURCE_TRACK).withProperties(
                 PropertyFactory.lineColor(TRACK_COLOR),
-                PropertyFactory.lineWidth(4f),
+                PropertyFactory.lineWidth(TRACK_WIDTH),
                 PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
                 PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
-                PropertyFactory.lineOpacity(0.9f),
+                PropertyFactory.lineOpacity(0.95f),
             ),
         )
         style.addLayer(
@@ -486,7 +500,12 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
         const val PLACES_HALO_LAYER = "app-places-halo"
         const val AREA_FILL_COLOR = 0xFF4A6B3F.toInt()
         const val AREA_LINE_COLOR = 0xFF2E3B2C.toInt()
-        const val TRACK_COLOR = 0xFFB3261E.toInt()
+        const val TRACK_COLOR = 0xFFD32F2F.toInt()
+
+        /** Pale casing drawn under [TRACK_COLOR] so the trail reads on any basemap. */
+        const val TRACK_CASING_COLOR = 0xFFFFF8F0.toInt()
+
+        const val TRACK_WIDTH = 5f
         const val LOCATION_COLOR = 0xFF1E88E5.toInt()
         const val PROP_HEADING = "heading"
         const val PROP_HAS_HEADING = "hasHeading"
