@@ -247,27 +247,34 @@ def _extract_zip(path: str, outdir: str) -> List[str]:
 # ===========================================================================
 
 def build_dtm_pdal(laz_files: Sequence[str], out_tif: str, resolution: float = 1.0,
-                   srs: str = "EPSG:5514", dry_run: bool = False) -> None:
-    """Postaví DTM z bodů třídy 2 (ground) pomocí PDAL ``writers.gdal`` (IDW)."""
+                   srs: str = "EPSG:5514", dry_run: bool = False,
+                   class_limits: str = "") -> None:
+    """Postaví DTM pomocí PDAL ``writers.gdal`` (IDW).
+
+    OVĚŘENO NAOSTRO 2026-08-20: DMR 5G od ČÚZK je odvozený, čistě terénní produkt
+    a jeho body nesou ``Classification = 8`` (model key-point), NE 2 (ground).
+    Dřívější natvrdo zadrátovaný filtr ``Classification[2:2]`` proto vyprázdnil
+    každý soubor a PDAL spadl na "no points". Výchozí je tedy žádný filtr;
+    ``class_limits`` (např. "Classification[2:2]") dává smysl jen pro surová,
+    klasifikovaná lidarová data odjinud.
+    """
     _require(["pdal"], "brew install pdal")
-    pipeline = {
-        "pipeline": (
-            list(laz_files)
-            + [
-                {"type": "filters.range", "limits": "Classification[2:2]"},
-                {
-                    "type": "writers.gdal",
-                    "filename": out_tif,
-                    "resolution": resolution,
-                    "output_type": "idw",
-                    "window_size": 4,
-                    "gdaldriver": "GTiff",
-                    "nodata": -9999,
-                    "default_srs": srs,
-                },
-            ]
-        )
-    }
+    stages: List[Any] = list(laz_files)
+    if class_limits:
+        stages.append({"type": "filters.range", "limits": class_limits})
+    stages.append(
+        {
+            "type": "writers.gdal",
+            "filename": out_tif,
+            "resolution": resolution,
+            "output_type": "idw",
+            "window_size": 4,
+            "gdaldriver": "GTiff",
+            "nodata": -9999,
+            "default_srs": srs,
+        },
+    )
+    pipeline = {"pipeline": stages}
     handle, pipeline_path = tempfile.mkstemp(suffix=".json", prefix="dm_pdal_")
     with os.fdopen(handle, "w", encoding="utf-8") as fh:
         json.dump(pipeline, fh, indent=2)
@@ -537,6 +544,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     # výstup
     parser.add_argument("--zoom", default="12-17", help="rozsah zoomů pro dlaždice")
     parser.add_argument("--pmtiles", help="výstupní .pmtiles (bez něj se skončí u dlaždic)")
+    parser.add_argument(
+        "--class-filter", default="",
+        help="PDAL filters.range limity, např. 'Classification[2:2]' pro surová "
+             "klasifikovaná data; DMR 5G má vše ve třídě 8, výchozí je bez filtru",
+    )
     parser.add_argument("--dry-run", action="store_true", help="jen vypsat kroky a příkazy")
     args = parser.parse_args(argv)
 
@@ -594,7 +606,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 return 1
             print("\n2) stavím DTM (PDAL, rozlišení %.2f m)" % args.resolution)
             try:
-                build_dtm_pdal(laz_files, dtm_path, args.resolution, args.dtm_srs)
+                build_dtm_pdal(laz_files, dtm_path, args.resolution, args.dtm_srs,
+                               class_limits=args.class_filter)
             except (RuntimeError, subprocess.CalledProcessError) as exc:
                 print("CHYBA: stavba DTM selhala: %s" % exc, file=sys.stderr)
                 print("       (PDAL nainstaluješ přes: brew install pdal)", file=sys.stderr)

@@ -182,4 +182,57 @@ class PolygonIndexTest {
         assertThat(index.featureAt(0.0, 0.0)).isNull()
         assertThat(index.propertyAt(0.0, 0.0, "Kategorie")).isNull()
     }
+
+    @Test
+    fun `grid answers match a brute-force scan over a lattice of polygons`() {
+        // 10x10 small squares spread over ~0.5° so they land in many different grid cells,
+        // including squares that straddle cell boundaries (cell size is 0.01°).
+        val squares = buildList {
+            for (i in 0 until 10) {
+                for (j in 0 until 10) {
+                    val west = 15.0 + i * 0.05 + 0.007
+                    val south = 49.0 + j * 0.05 + 0.007
+                    add(square(west, south, west + 0.012, south + 0.012, name = "sq_${i}_$j"))
+                }
+            }
+        }
+        val index = PolygonIndex.parse(collection(*squares.toTypedArray()))
+        assertThat(index.polygons).hasSize(100)
+
+        val random = java.util.Random(42)
+        repeat(300) {
+            val lat = 48.95 + random.nextDouble() * 0.6
+            val lon = 14.95 + random.nextDouble() * 0.6
+            val viaGrid = index.featureAt(lat, lon)?.properties?.get("Nazev")
+            val bruteForce = index.polygons.firstOrNull { it.contains(lat, lon) }?.properties?.get("Nazev")
+            assertThat(viaGrid).isEqualTo(bruteForce)
+        }
+
+        // nearest: the grid must find the same polygon (and distance) as walking everything.
+        repeat(100) {
+            val lat = 48.98 + random.nextDouble() * 0.55
+            val lon = 14.98 + random.nextDouble() * 0.55
+            val viaGrid = index.nearest(lat, lon, maxMeters = 900.0)
+            val bruteForce = index.polygons
+                .map { it to it.distanceMetersTo(lat, lon) }
+                .filter { it.second <= 900.0 }
+                .minByOrNull { it.second }
+            if (bruteForce == null) {
+                assertThat(viaGrid).isNull()
+            } else {
+                assertThat(viaGrid).isNotNull()
+                assertThat(viaGrid!!.second).isWithin(1e-6).of(bruteForce.second)
+            }
+        }
+    }
+
+    @Test
+    fun `a polygon spanning many grid cells is found from every cell it covers`() {
+        // One big square (~0.2° across) covers hundreds of 0.01° cells.
+        val index = PolygonIndex.parse(collection(square(15.0, 49.0, 15.2, 49.2, name = "Velky")))
+        assertThat(index.featureAt(49.001, 15.001)?.properties?.get("Nazev")).isEqualTo("Velky")
+        assertThat(index.featureAt(49.19, 15.19)?.properties?.get("Nazev")).isEqualTo("Velky")
+        assertThat(index.featureAt(49.1, 15.1)?.properties?.get("Nazev")).isEqualTo("Velky")
+        assertThat(index.featureAt(49.21, 15.1)).isNull()
+    }
 }

@@ -22,6 +22,11 @@ Typy změn: `Přidáno`, `Změněno`, `Zastaralé`, `Odebráno`, `Opraveno`, `Be
   uspořádání, šipky posouvají vrstvu v seznamu a mapa se přeskládá okamžitě,
   bez znovunačítání dlaždic. Co je v seznamu níž, kreslí se na mapě navrch.
 
+### Změněno
+- Vrstva ÚAN vyhledává přes prostorovou mřížku (~1 km buňky) místo lineárního
+  skenu — celorepublikový export polygonů už není překážka pro dotaz při každém
+  GPS fixu.
+
 ### Opraveno
 - Pořadí překryvných vrstev na mapě nyní respektuje uživatelské přeuspořádání
   (dřív se bralo jen pevné pořadí z katalogu).
@@ -46,6 +51,12 @@ Typy změn: `Přidáno`, `Změněno`, `Zastaralé`, `Odebráno`, `Opraveno`, `Be
   takže vrstva nese nový příznak `manualAlignment` a panel vrstev u ní trvale
   ukazuje, že přesné zarovnání se dělá ručně přes „Přiložit sken…".
 - **Katalog vrstev se umí doplňovat** — nové vestavěné vrstvy se při aktualizaci
+- `tools/dmr5g_hillshade.py`: DMR 5G body nesou klasifikaci 8, ne 2 (ground) —
+  natvrdo zadrátovaný filtr vyprázdnil každý LAZ a PDAL spadl na „no points".
+  Odhaleno při prvním ostrém běhu pipeline; filtr je teď volitelný
+  (`--class-filter`), výchozí bez filtru.
+- CI nově spouští i instrumentované testy na emulátoru (gesta a panel vrstev,
+  které JVM testy pokrýt neumí).
   aplikace přidají i do existujícího `layers.json`, aniž by přepsaly ruční úpravy.
 - Desktop pipeline zná nový typ zdroje `xyz` (prosté `{z}/{x}/{y}` šablony bez
   Capabilities) včetně kontroly dostupnosti přes reálnou dlaždici.

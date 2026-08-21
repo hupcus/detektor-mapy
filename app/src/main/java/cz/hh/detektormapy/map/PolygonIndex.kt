@@ -87,25 +87,45 @@ data class IndexedPolygon(
  * A tiny in-memory index over a GeoJSON `FeatureCollection`.
  *
  * Built for the ÚAN layer (issue F4-3): the app has to answer "am I standing inside a
- * protected archaeological area right now" on every GPS fix, and doing that against a parsed
- * structure with per-feature bounding boxes is orders of magnitude cheaper than re-reading the
- * file. It is deliberately simple -- a linear scan filtered by bbox is plenty for the few
- * thousand polygons a single region contains.
+ * protected archaeological area right now" on every GPS fix. Polygons are bucketed into a
+ * uniform ~0.01° grid at parse time, so a query touches only the handful of features whose
+ * bounding box crosses its cell — a nationwide ÚAN export stays O(cell), not O(n), at the
+ * adaptive fix cadence of 12 queries a minute.
  */
 class PolygonIndex(val polygons: List<IndexedPolygon>) {
+
+    /** Cell key -> indices into [polygons] whose bbox intersects the cell. */
+    private val grid: Map<Long, IntArray> = buildMap<Long, MutableList<Int>> {
+        polygons.forEachIndexed { index, polygon ->
+            val b = polygon.bounds
+            for (cx in cellOf(b.west)..cellOf(b.east)) {
+                for (cy in cellOf(b.south)..cellOf(b.north)) {
+                    getOrPut(cellKey(cx, cy)) { mutableListOf() } += index
+                }
+            }
+        }
+    }.mapValues { (_, indices) -> indices.toIntArray() }
 
     val isEmpty: Boolean get() = polygons.isEmpty()
 
     /** The first polygon containing the point, or null. */
-    fun featureAt(lat: Double, lon: Double): IndexedPolygon? = polygons.firstOrNull { it.contains(lat, lon) }
+    fun featureAt(lat: Double, lon: Double): IndexedPolygon? {
+        val cell = grid[cellKey(cellOf(lon), cellOf(lat))] ?: return null
+        // First by parse order, matching the old linear scan when polygons overlap.
+        for (index in cell) {
+            val polygon = polygons[index]
+            if (polygon.contains(lat, lon)) return polygon
+        }
+        return null
+    }
 
     /**
      * Nearest polygon within [maxMeters], with its distance -- 0 when the point is inside one.
      *
      * Being told "you are standing in a protected area" is already too late; the useful warning
-     * is the one that arrives while you are still walking towards the boundary. Candidates are
-     * pre-filtered by a bounding box grown by [maxMeters] so the expensive edge walk only runs
-     * for polygons that could plausibly be in range.
+     * is the one that arrives while you are still walking towards the boundary. Candidates come
+     * from the grid cells covered by the query bbox grown by [maxMeters], so the expensive edge
+     * walk only runs for polygons that could plausibly be in range.
      */
     fun nearest(lat: Double, lon: Double, maxMeters: Double): Pair<IndexedPolygon, Double>? {
         if (polygons.isEmpty()) return null
@@ -113,17 +133,25 @@ class PolygonIndex(val polygons: List<IndexedPolygon>) {
         val cosLat = kotlin.math.cos(Math.toRadians(lat))
         val padLon = if (cosLat < 1e-6) 180.0 else maxMeters / (111_320.0 * cosLat)
 
+        val seen = HashSet<Int>()
         var bestPolygon: IndexedPolygon? = null
         var bestDistance = Double.MAX_VALUE
-        for (polygon in polygons) {
-            val b = polygon.bounds
-            if (lat < b.south - padLat || lat > b.north + padLat) continue
-            if (lon < b.west - padLon || lon > b.east + padLon) continue
-            val d = polygon.distanceMetersTo(lat, lon)
-            if (d < bestDistance) {
-                bestDistance = d
-                bestPolygon = polygon
-                if (d == 0.0) break
+        outer@ for (cx in cellOf(lon - padLon)..cellOf(lon + padLon)) {
+            for (cy in cellOf(lat - padLat)..cellOf(lat + padLat)) {
+                val cell = grid[cellKey(cx, cy)] ?: continue
+                for (index in cell) {
+                    if (!seen.add(index)) continue
+                    val polygon = polygons[index]
+                    val b = polygon.bounds
+                    if (lat < b.south - padLat || lat > b.north + padLat) continue
+                    if (lon < b.west - padLon || lon > b.east + padLon) continue
+                    val d = polygon.distanceMetersTo(lat, lon)
+                    if (d < bestDistance) {
+                        bestDistance = d
+                        bestPolygon = polygon
+                        if (d == 0.0) break@outer
+                    }
+                }
             }
         }
         val polygon = bestPolygon ?: return null
@@ -136,6 +164,16 @@ class PolygonIndex(val polygons: List<IndexedPolygon>) {
     companion object {
 
         val EMPTY = PolygonIndex(emptyList())
+
+        /**
+         * ~1.1 km of latitude per cell. ÚAN polygons are village-sized, so most span a cell
+         * or two; a nationwide export lands at a few entries per occupied cell.
+         */
+        private const val CELL_DEG = 0.01
+
+        private fun cellOf(deg: Double): Int = kotlin.math.floor(deg / CELL_DEG).toInt()
+
+        private fun cellKey(cx: Int, cy: Int): Long = (cx.toLong() shl 32) or (cy.toLong() and 0xFFFF_FFFFL)
 
         /**
          * Parses a GeoJSON FeatureCollection. Anything malformed is skipped rather than

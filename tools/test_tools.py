@@ -913,6 +913,37 @@ class TestHillshade(unittest.TestCase):
         with self.assertRaises(ValueError):
             hs.multidirectional_hillshade(dtm, 1.0, (0.0, 90.0), weights=(1.0,))
 
+    def test_pdal_pipeline_has_no_class_filter_by_default(self) -> None:
+        """Regrese z prvního ostrého běhu 2026-08-20: DMR 5G nese Classification=8
+        (ne 2 = ground), takže natvrdo zadrátovaný filtr [2:2] vyprázdnil každý
+        soubor a PDAL spadl na 'no points'. Výchozí pipeline nesmí filtrovat."""
+        captured = {}
+
+        def fake_run(cmd, **kwargs):
+            with open(cmd[-1], encoding="utf-8") as fh:
+                captured["pipeline"] = json.load(fh)
+            return None
+
+        original_run = hs.subprocess.run
+        original_require = hs._require
+        hs.subprocess.run = fake_run
+        hs._require = lambda tools, hint: None
+        try:
+            hs.build_dtm_pdal(["a.laz"], "/tmp/out.tif")
+            stages = captured["pipeline"]["pipeline"]
+            self.assertFalse(any(
+                isinstance(s, dict) and s.get("type") == "filters.range" for s in stages
+            ))
+
+            hs.build_dtm_pdal(["a.laz"], "/tmp/out.tif", class_limits="Classification[2:2]")
+            stages = captured["pipeline"]["pipeline"]
+            self.assertTrue(any(
+                isinstance(s, dict) and s.get("limits") == "Classification[2:2]" for s in stages
+            ))
+        finally:
+            hs.subprocess.run = original_run
+            hs._require = original_require
+
     def test_svf_range_and_pit(self) -> None:
         dtm = _np.zeros((21, 21), dtype="float32")
         svf_flat = hs.sky_view_factor(dtm, 1.0, directions=8, max_radius=5)

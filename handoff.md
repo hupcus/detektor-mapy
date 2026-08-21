@@ -367,6 +367,49 @@ zkontrolováno). Adresáře `data/` se nekomitují (\*.pmtiles v .gitignore).
 `Android/data/cz.hh.detektormapy/files/layers/` — katalogový záznam `vm2` na
 něj už čeká. Stejným postupem jde vyrobit `vm3.pmtiles` (source `iii_vm`).
 
+## Noční směna (2026-08-20/21) — „nezastavuj, zkus to co nejvíc vylepšit"
+
+Commity NEjsou provedené — čekají na ranní schválení (pravidlo ptát se platí
+i přes noc). Pracovní strom obsahuje vlnu 5:
+
+- **ÚAN data pro Úpicko**: `data/uan/uan.geojson` — 793 polygonů (465 ÚAN I,
+  279 ÚAN II, 49 pásmo) pro bbox 15.70–16.35 / 50.35–50.65, sloučené ze tří
+  vrstev NPÚ služby. Do telefonu vedle vm2.pmtiles.
+- **PolygonIndex má prostorovou mřížku** (0.01°, klíč = packed int64):
+  `featureAt`/`nearest` chodí jen přes buňky, ekvivalence s lineárním skenem
+  přibitá testem se 100 polygony × 400 náhodných bodů. Poslední známý perf
+  dluh z revize je splacený.
+- **`dmr5g_hillshade.py` — nález z prvního ostrého běhu:** DMR 5G LAZ nese
+  **Classification = 8** (model key-point), ne 2 (ground) — je to odvozený,
+  čistě terénní produkt. Natvrdo zadrátovaný `filters.range [2:2]` vyprázdnil
+  každý soubor → „PDAL: no points". Filtr je teď volitelný `--class-filter`,
+  výchozí prázdný; regresní test kontroluje JSON pipeline. LAZ pro Úpicko
+  (15 listů TRUT/BROU) stažené v `data/lidar_upice/laz/`.
+- **CI má nový job `instrumented`**: reactivecircus/android-emulator-runner,
+  API 34 x86_64, KVM povolené udev pravidlem; spouští connectedDebugAndroidTest
+  (peek gesto + reorder panelu). Ověří se prvním pushem.
+- **Backlog úklid**: zavřeno 26 hotových issues (fáze 0–5). Otevřené zbývají:
+  #9 (F1-5 vektorový basemap), #26 (F5-1 — zavřít po ověření hillshade), #29–33
+  (F6 stahování v telefonu), #34 (licence).
+- **Release 0.4.0 připravený** (versionCode 5, CHANGELOG sekce) — tag a push
+  ráno po schválení.
+- **F5-1 DOKONČENO (23:22):** vlastní LiDAR reliéf Úpicka naostro — DTM
+  12501×12001 px @ 1 m (PDAL IDW z 15 LAZ, 1.1 GB tif), 6azimutový hillshade
+  + SVF → `data/pmtiles/dmr5g_upice.pmtiles` (132 MB, z12–17). Vizuálně: meze,
+  terasy, úvozy i základy budov čitelné — výrazně ostřejší než ČÚZK WMS.
+  Nahráno do telefonu + přidán záznam `dmr5g_upice` do jeho layers.json
+  (order 21, opacity 0.6, bounds jen Úpicko); tile server ho servíruje.
+  Issue #26 zavřeno. Mezivýpočty v `data/lidar_upice/` (LAZ + dtm.tif) jdou
+  smazat, PMTiles je hotový artefakt.
+- **TELEFON NASAZEN (23:11):** na USB byl připojený Galaxy S25 Ultra →
+  nainstalován podepsaný release **v0.3.0** z GitHub Releases (upgrade z 0.2.1,
+  data zachována), nahrány `vm2.pmtiles` (63 MB), `vm3.pmtiles` (54 MB) a
+  `uan.geojson` (793 polygonů) do `files/layers/`. Aplikace spuštěna na pozadí:
+  **katalog zmigroval v1→v2 (15 vrstev)** a tile server na telefonu ověřen
+  přes `adb forward` — vm2 i vm3 servírují skutečné dlaždice Úpicka z lokálních
+  archivů. Poznámka: `adb push` do `Android/data` na tomhle Samsungu funguje
+  i pro nedebugovatelný balíček.
+
 **Pasti na příště (emulátor):**
 - `adb install` debug APK = balíček `cz.hh.detektormapy.debug` — jiný adresář
   `files/layers` než release! Čtení release souboru vypadá jako „merge neběží".
