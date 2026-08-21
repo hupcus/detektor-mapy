@@ -491,3 +491,23 @@ uživatele zůstala nedotčená.
 **Past na příště:** `adb shell input tap` do Compose `AlertDialog` občas mine,
 i když souřadnice sedí — spolehlivé až po `uiautomator dump` a kliknutí na střed
 `clickable` uzlu (ne text-uzlu).
+
+## Fáze 7 — Veřejné vydání: zadání hotové (2026-08-21)
+
+Uživatel chce z aplikace udělat zdarma open source pro všechny detektoráře.
+Kompletní zadání je v **docs/VEREJNE_VYDANI.md** (bloky A offline, B průvodci,
+C právo, D distribuce; milníky M1–M5). Z něj založeno **F7-1 … F7-13
+(issues #35–#47)** a aktualizovány dotčené staré issues:
+
+- **#29 (Křovák v mobilu) není pro veřejné vydání potřeba** — všechny plánované
+  vrstvy už jedou v EPSG:3857; degradováno na P2, nic na něm nestojí.
+- **#30 se rozpouští do F7-1 (#35)**: write-through cache v LocalTileServer
+  (paměť → cache.mbtiles → síť) místo zvláštního stahovacího formátu. Cachovat
+  ZDROJOVÉ bajty před warpem, klíč bez generace — jinak se kalibrace zapeče do cache.
+- **#9 (offline OSM podklad) povýšeno na P1** — OSM tile policy nejspíš zakazuje
+  tile.openstreetmap.org jako default v distribuované aplikaci (ověří F7-6).
+- Pořadí: **F7-1 první** (odemyká zbytek), dopisy institucím (F7-6) odeslat hned,
+  čekání běží paralelně.
+
+Release v0.4.0 podepsán a nainstalován do telefonu uživatele (data zachována),
+commity 5d9566e + 2708084 pushnuty na main.
