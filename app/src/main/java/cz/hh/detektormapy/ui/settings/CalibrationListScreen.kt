@@ -36,7 +36,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
+import cz.hh.detektormapy.calibration.Affine2D
 import cz.hh.detektormapy.data.entity.LayerCalibrationEntity
+import cz.hh.detektormapy.ui.calibration.CalibrationReadout
 import cz.hh.detektormapy.ui.calibration.CalibrationViewModel
 import cz.hh.detektormapy.ui.nav.Routes
 import java.text.SimpleDateFormat
@@ -179,16 +181,17 @@ private fun CalibrationRow(
                         color = MaterialTheme.colorScheme.outline,
                     )
                     Text(
-                        String.format(
-                            Locale.forLanguageTag("cs"),
-                            "posun %.0f m / %.0f m • měřítko %.3f",
-                            calibration.m2,
-                            calibration.m5,
-                            kotlin.math.sqrt(
-                                kotlin.math.abs(
-                                    calibration.m0 * calibration.m4 - calibration.m1 * calibration.m3,
-                                ),
+                        CalibrationReadout.describeAt(
+                            Affine2D(
+                                calibration.m0,
+                                calibration.m1,
+                                calibration.m2,
+                                calibration.m3,
+                                calibration.m4,
+                                calibration.m5,
                             ),
+                            centerLat = (calibration.south + calibration.north) / 2.0,
+                            centerLon = (calibration.west + calibration.east) / 2.0,
                         ),
                         style = MaterialTheme.typography.labelSmall,
                     )

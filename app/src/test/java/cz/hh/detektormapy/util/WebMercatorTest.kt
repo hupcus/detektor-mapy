@@ -145,6 +145,27 @@ class BBoxTest {
         assertThat(e.widthDeg).isWithin(1e-9).of(2.0)
     }
 
+    /**
+     * A box built from one GCP has zero area, and `expand` multiplies zero by anything to get
+     * zero -- so the calibration derived from it would be stored and then never match a single
+     * position again.
+     */
+    @Test
+    fun `atLeast rescues a degenerate box`() {
+        val point = BBox(16.02, 50.51, 16.02, 50.51)
+        val usable = point.expand(1.2).atLeast(0.02)
+        assertThat(usable.widthDeg).isWithin(1e-9).of(0.02)
+        assertThat(usable.heightDeg).isWithin(1e-9).of(0.02)
+        assertThat(usable.centerLon).isWithin(1e-9).of(16.02)
+        assertThat(usable.contains(50.51, 16.02)).isTrue()
+    }
+
+    @Test
+    fun `atLeast leaves a box that is already big enough`() {
+        val big = BBox(15.0, 50.0, 16.0, 51.0)
+        assertThat(big.atLeast(0.02)).isEqualTo(big)
+    }
+
     @Test
     fun `inverted bounds are rejected`() {
         try {

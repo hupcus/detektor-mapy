@@ -46,9 +46,18 @@ class LayerManager @Inject constructor(
     private val availability = MutableStateFlow<Map<String, String?>>(emptyMap())
     private val activeCalibrations = MutableStateFlow<Map<String, Long>>(emptyMap())
 
+    /**
+     * Mirror of the tile server's per-layer generation counters.
+     *
+     * The server already bumps a generation on every calibration change, but nothing downstream
+     * could see it, so the map never learned that its tiles had gone stale. Mirroring it into a
+     * flow makes the change part of [layers], which is what the map actually observes.
+     */
+    private val tileRevisions = MutableStateFlow<Map<String, Int>>(emptyMap())
+
     /** Everything the layer panel needs, already sorted bottom-to-top. */
     val layers: StateFlow<List<LayerUiState>> =
-        combine(catalog, prefs.state, availability, activeCalibrations) { cat, p, avail, calibs ->
+        combine(catalog, prefs.state, availability, activeCalibrations, tileRevisions) { cat, p, avail, calibs, revs ->
             cat.layers
                 .map { def ->
                     val reason = avail[def.id]
@@ -59,6 +68,7 @@ class LayerManager @Inject constructor(
                         available = reason == null,
                         unavailableReason = reason,
                         activeCalibrationId = calibs[def.id],
+                        tileRevision = revs[def.id] ?: 0,
                     )
                 }
                 .sortedBy { p.order[it.def.id] ?: it.def.order }
@@ -178,6 +188,9 @@ class LayerManager @Inject constructor(
 
         geoJsonLayers.value = geo
         availability.value = problems
+        // Re-registering an archive bumps its generation too, so the map has to be told; a
+        // reload that swapped a .pmtiles file would otherwise keep serving the old pixels.
+        tileRevisions.value = freshArchives.keys.associateWith { server.generationOf(it) }
     }
 
     /** Base URL template for MapLibre, or null when the layer cannot currently be served. */
@@ -218,9 +231,47 @@ class LayerManager @Inject constructor(
         activeCalibrations.value = activeCalibrations.value.toMutableMap().apply {
             if (calibrationId == null) remove(layerId) else put(layerId, calibrationId)
         }
+        publishTileRevision(layerId)
+    }
+
+    /**
+     * Republishes a layer's tile generation. A no-op calibration leaves the generation alone, so
+     * the resulting map compares equal and the flow stays silent -- which matters, because the
+     * map re-applies stored calibrations on every camera-idle event.
+     */
+    private fun publishTileRevision(layerId: String) {
+        val generation = server.generationOf(layerId)
+        val current = tileRevisions.value
+        if (current[layerId] == generation) return
+        tileRevisions.value = current + (layerId to generation)
     }
 
     fun calibrationOf(layerId: String): Affine2D? = server.calibrationOf(layerId)
+
+    /**
+     * Stitches the pixels behind the live calibration ghost (Režim A).
+     *
+     * Reads the archive directly rather than the tile server on purpose: the ghost is positioned
+     * by its four corners, so it needs the *uncalibrated* image and applies the whole pending
+     * transform geometrically. Going through the server would bake the stored calibration into
+     * the pixels and then transform them a second time.
+     *
+     * @param visibleM viewport as `[west, south, east, north]` in EPSG:3857 metres
+     */
+    suspend fun renderOverlaySnapshot(layerId: String, visibleM: DoubleArray, zoom: Int): OverlaySnapshot? =
+        withContext(io) {
+            val archive = openArchives[layerId] ?: return@withContext null
+            val rect = OverlayMosaic.sourceRect(visibleM, server.calibrationOf(layerId))
+            // A remote layer fetches each of these tiles over the network, one at a time, so it
+            // gets a smaller budget -- waiting half a minute for the ghost to appear would be
+            // worse than the slightly tighter margin it can be dragged within.
+            val local = definitionOf(layerId)?.kind.let { it == LayerKind.PMTILES || it == LayerKind.MBTILES }
+            val budget = if (local) OverlayMosaic.MAX_TILES else OverlayMosaic.MAX_REMOTE_TILES
+            val plan = OverlayMosaic.plan(rect, zoom, archive.minZoom, archive.maxZoom, budget)
+                ?: return@withContext null
+            val bitmap = OverlayMosaic.render(archive, plan) ?: return@withContext null
+            OverlaySnapshot(bitmap, plan.boundsMeters())
+        }
 
     fun shutdown() {
         openArchives.values.forEach { runCatching { it.close() } }

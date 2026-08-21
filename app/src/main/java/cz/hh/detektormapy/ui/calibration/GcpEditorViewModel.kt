@@ -44,8 +44,22 @@ data class GcpEditorState(
     val message: String? = null,
     val exportedPath: String? = null,
 ) {
-    val canFit: Boolean get() = points.size >= if (useSimilarity) 2 else 3
+    /**
+     * One point already fits something useful -- a pure shift. Requiring two before anything
+     * happened was the reason a single ground control point appeared to do nothing at all.
+     */
+    val canFit: Boolean get() = points.size >= if (useSimilarity) 1 else 3
+
     val tpsAdvisable: Boolean get() = points.size >= 6
+
+    /** What the current point count actually buys, so the user knows what "Náhled" will show. */
+    val fitLabel: String get() = when {
+        transform == null && useSimilarity -> "Zadej aspoň jeden bod"
+        transform == null -> "Afinní fit potřebuje 3 body"
+        !useSimilarity -> "Afinní (posun + otočení + zkosení)"
+        points.size == 1 -> "Jen posun — druhý bod přidá otočení a měřítko"
+        else -> "Posun + otočení + měřítko"
+    }
 }
 
 /**
@@ -253,6 +267,7 @@ class GcpEditorViewModel @Inject constructor(
 
     private fun fitFor(pairs: List<PointPair>, similarity: Boolean): Affine2D? = when {
         similarity && pairs.size >= 2 -> Affine2D.fitSimilarity(pairs)
+        similarity && pairs.size == 1 -> Affine2D.fitTranslation(pairs)
         !similarity && pairs.size >= 3 -> Affine2D.fitAffine(pairs)
         else -> null
     }
@@ -262,7 +277,15 @@ class GcpEditorViewModel @Inject constructor(
         val lons = points.map { WebMercator.metersToLon(it.dstX) }
         val lats = points.map { WebMercator.metersToLat(it.dstY) }
         val raw = BBox(lons.min(), lats.min(), lons.max(), lats.max())
-        // Pad by 20 % so the calibration also covers the ground just outside the GCP hull.
-        return raw.expand(1.2)
+        // Pad by 20 % so the calibration also covers the ground just outside the GCP hull, and
+        // never below MIN_EXTENT_DEG: points clustered on one church (or a single point) give a
+        // box of near-zero area, which `getBestCalibrationFor` could never match -- the
+        // calibration would be saved and then never applied to anything again.
+        return raw.expand(1.2).atLeast(MIN_EXTENT_DEG)
+    }
+
+    private companion object {
+        /** ~2 km, about as far as a calibration derived from one spot can be trusted anyway. */
+        const val MIN_EXTENT_DEG = 0.02
     }
 }

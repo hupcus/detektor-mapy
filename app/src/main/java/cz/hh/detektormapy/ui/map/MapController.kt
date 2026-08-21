@@ -33,9 +33,20 @@ import org.maplibre.geojson.Polygon
  */
 class MapController(private val map: MapLibreMap, private val urlTemplateProvider: (String) -> String?) {
 
-    private val installedRasters = linkedSetOf<String>()
+    /** Layer id -> the tile URL template its source was built from, in stacking order. */
+    private val installedRasters = LinkedHashMap<String, String>()
     private val installedGeoJson = linkedSetOf<String>()
     private var overlaysReady = false
+
+    /**
+     * Layer currently replaced by the live calibration ghost, if any.
+     *
+     * While Režim A is running the real raster is held at zero opacity and an [ImageSource]
+     * stand-in follows the fingers instead. Every place that sets `raster-opacity` has to route
+     * through [effectiveOpacity], otherwise a peek or a slider drag would un-hide the real layer
+     * and the user would see the overlay twice, once in each position.
+     */
+    private var ghostedLayerId: String? = null
 
     fun onStyleLoaded(style: Style) {
         installOverlaySources(style)
@@ -47,7 +58,7 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
         val wanted = layers.filter { it.visible && it.available && it.def.isRaster }
 
         // Remove what is no longer wanted.
-        installedRasters.toList().forEach { layerId ->
+        installedRasters.keys.toList().forEach { layerId ->
             if (wanted.none { it.def.id == layerId }) {
                 runCatching { style.removeLayer(MapStyle.rasterLayerId(layerId)) }
                 runCatching { style.removeSource(MapStyle.rasterSourceId(layerId)) }
@@ -63,6 +74,18 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
             val template = urlTemplateProvider(id) ?: run {
                 Log.d(TAG, "Vrstva $id zatím nemá URL, přeskakuji")
                 return@forEachIndexed
+            }
+
+            // A changed template means the tiles at those addresses now look different -- a
+            // calibration was applied, cleared, or the archive was swapped. MapLibre cannot be
+            // asked to refetch, so the source is rebuilt under the new URL. Comparing templates
+            // rather than a boolean keeps this free in the common case: the template only moves
+            // when the generation does.
+            val installedTemplate = installedRasters[id]
+            if (installedTemplate != null && installedTemplate != template) {
+                runCatching { style.removeLayer(layerId) }
+                runCatching { style.removeSource(sourceId) }
+                installedRasters.remove(id)
             }
 
             if (id !in installedRasters) {
@@ -91,11 +114,11 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
                     } else {
                         style.addLayer(buildRasterLayer(state))
                     }
-                    installedRasters.add(id)
+                    installedRasters[id] = template
                 }.onFailure { Log.w(TAG, "Vrstvu $id nelze přidat do stylu", it) }
             } else {
                 (style.getLayer(layerId) as? RasterLayer)
-                    ?.setProperties(PropertyFactory.rasterOpacity(state.opacity))
+                    ?.setProperties(PropertyFactory.rasterOpacity(effectiveOpacity(state)))
             }
         }
 
@@ -138,10 +161,32 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
     private fun buildRasterLayer(state: LayerUiState): RasterLayer =
         RasterLayer(MapStyle.rasterLayerId(state.def.id), MapStyle.rasterSourceId(state.def.id))
             .withProperties(
-                PropertyFactory.rasterOpacity(state.opacity),
+                PropertyFactory.rasterOpacity(effectiveOpacity(state)),
                 PropertyFactory.rasterFadeDuration(0f),
                 PropertyFactory.rasterResampling(Property.RASTER_RESAMPLING_LINEAR),
             )
+
+    /** The opacity a raster layer should actually be drawn at right now. */
+    private fun effectiveOpacity(state: LayerUiState): Float = if (state.def.id == ghostedLayerId) {
+        0f
+    } else {
+        state.opacity
+    }
+
+    /**
+     * Hands the given layer over to (or back from) the live calibration ghost.
+     *
+     * Passing null restores the layer's own opacity, which is what makes the real, freshly
+     * warped tiles appear once the user saves.
+     */
+    fun setGhostedLayer(style: Style, layerId: String?, layers: List<LayerUiState>) {
+        if (ghostedLayerId == layerId) return
+        ghostedLayerId = layerId
+        layers.filter { it.def.isRaster }.forEach { state ->
+            (style.getLayer(MapStyle.rasterLayerId(state.def.id)) as? RasterLayer)
+                ?.setProperties(PropertyFactory.rasterOpacity(effectiveOpacity(state)))
+        }
+    }
 
     /**
      * Adds / removes GeoJSON overlays such as ÚAN (issue F4-3).
@@ -214,7 +259,7 @@ class MapController(private val map: MapLibreMap, private val urlTemplateProvide
             val layer = style.getLayer(MapStyle.rasterLayerId(state.def.id)) as? RasterLayer
                 ?: return@forEach
             layer.setProperties(
-                PropertyFactory.rasterOpacity(if (peeking) 0f else state.opacity),
+                PropertyFactory.rasterOpacity(if (peeking) 0f else effectiveOpacity(state)),
             )
         }
     }

@@ -28,10 +28,35 @@ Typy změn: `Přidáno`, `Změněno`, `Zastaralé`, `Odebráno`, `Opraveno`, `Be
   GPS fixu.
 
 ### Opraveno
+- **Sladit (Režim A) konečně opravdu posouvá vrstvu.** MapLibre nedokáže
+  rastrovou vrstvu posunout ani si vyžádat dlaždici znovu, takže server sice
+  poctivě počítal zdeformované dlaždice, ale mapa je nikdy nenačetla — kalibrace
+  se na obrazovce vůbec neprojevila. Nově adresa dlaždic nese generaci vrstvy
+  (`?g=N`), takže změna kalibrace je pro MapLibre nová sada dlaždic, a během
+  tažení se místo dlaždic posouvá slepený náhled vrstvy (`ImageSource`), který
+  drží prst plynule. Podklad zůstává na místě, jak slibuje nápověda.
+- **Kalibrační lišta ukazuje, co se děje** — „posun 120 m • otočení 1,5°",
+  přepočtené na skutečné metry (Mercator je na 50° s. š. nafouklý o polovinu).
+- **Jeden bod v GCP editoru už něco udělá.** Similarity fit vyžadoval dva body,
+  takže po zadání prvního zůstalo všechno zašedlé. Jeden bod teď dává čistý
+  posun — přesně to, co člověk v terénu chce, když pozná kostel na obou mapách.
+- Kalibrace uložená z GCP bodů dostane minimální rozsah ~2 km; dřív měl rámeček
+  z jednoho bodu nulovou plochu, takže se uložil a už nikdy na nic nesedl.
+- Seznam kalibrací hlásil místo posunu translační sloupec matice měřený od
+  počátku Mercatoru — při sebemenším otočení stovky kilometrů. Teď měří posun
+  tam, kde kalibrace platí.
+- „Vynulovat" jde uložit — dřív se stav považoval za změněný jen oproti identitě,
+  takže vynulování existující kalibrace nešlo potvrdit.
 - Pořadí překryvných vrstev na mapě nyní respektuje uživatelské přeuspořádání
   (dřív se bralo jen pevné pořadí z katalogu).
 - Posluchače mapy (klik, dlouhý stisk, kamera) se při opuštění obrazovky
   odregistrovávají — dřív zůstávaly viset na mrtvé obrazovce.
+- `tools/dmr5g_hillshade.py`: DMR 5G body nesou klasifikaci 8, ne 2 (ground) —
+  natvrdo zadrátovaný filtr vyprázdnil každý LAZ a PDAL spadl na „no points".
+  Odhaleno při prvním ostrém běhu pipeline; filtr je teď volitelný
+  (`--class-filter`), výchozí bez filtru.
+- CI nově spouští i instrumentované testy na emulátoru (gesta a panel vrstev,
+  které JVM testy pokrýt neumí).
 
 ## [0.3.0] — 2026-08-20
 
@@ -51,12 +76,6 @@ Typy změn: `Přidáno`, `Změněno`, `Zastaralé`, `Odebráno`, `Opraveno`, `Be
   takže vrstva nese nový příznak `manualAlignment` a panel vrstev u ní trvale
   ukazuje, že přesné zarovnání se dělá ručně přes „Přiložit sken…".
 - **Katalog vrstev se umí doplňovat** — nové vestavěné vrstvy se při aktualizaci
-- `tools/dmr5g_hillshade.py`: DMR 5G body nesou klasifikaci 8, ne 2 (ground) —
-  natvrdo zadrátovaný filtr vyprázdnil každý LAZ a PDAL spadl na „no points".
-  Odhaleno při prvním ostrém běhu pipeline; filtr je teď volitelný
-  (`--class-filter`), výchozí bez filtru.
-- CI nově spouští i instrumentované testy na emulátoru (gesta a panel vrstev,
-  které JVM testy pokrýt neumí).
   aplikace přidají i do existujícího `layers.json`, aniž by přepsaly ruční úpravy.
 - Desktop pipeline zná nový typ zdroje `xyz` (prosté `{z}/{x}/{y}` šablony bez
   Capabilities) včetně kontroly dostupnosti přes reálnou dlaždici.

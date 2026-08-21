@@ -76,8 +76,22 @@ class LocalTileServer(private val cacheBytes: Long = DEFAULT_CACHE_BYTES, privat
 
     val isRunning: Boolean get() = running.get()
 
-    /** XYZ template for a MapLibre `RasterSource`. */
-    fun urlTemplate(layerId: String): String = "$baseUrl/t/$layerId/{z}/{x}/{y}"
+    /**
+     * XYZ template for a MapLibre `RasterSource`.
+     *
+     * The `?g=` suffix is the whole reason calibration is visible at all. MapLibre Android has
+     * no way to refresh or invalidate a raster source (verified with javap over 11.11.0: neither
+     * `Source` nor `RasterSource` exposes anything of the sort, and the style spec has no
+     * `raster-translate`), so once it has drawn a tile it never asks for that URL again. Warping
+     * the bytes server-side therefore changed nothing on screen. Folding the layer's generation
+     * into the URL turns "the calibration changed" into "this is a different tile set", which is
+     * something MapLibre *does* understand -- [MapController] compares templates and replaces
+     * the source when they differ. The server itself ignores the query string.
+     */
+    fun urlTemplate(layerId: String): String = "$baseUrl/t/$layerId/{z}/{x}/{y}?g=${generationOf(layerId)}"
+
+    /** Current cache generation of a layer; changes whenever its tiles would render differently. */
+    fun generationOf(layerId: String): Int = synchronized(layersLock) { layers[layerId]?.generation ?: 0 }
 
     // ------------------------------------------------------------------ lifecycle
 

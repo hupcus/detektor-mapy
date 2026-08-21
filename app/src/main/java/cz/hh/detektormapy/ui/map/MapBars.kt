@@ -26,6 +26,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import cz.hh.detektormapy.data.entity.PlaceEntity
 import cz.hh.detektormapy.data.model.PlaceType
+import cz.hh.detektormapy.ui.calibration.CalibrationReadout
 import cz.hh.detektormapy.util.Geo
 import kotlin.math.roundToInt
 
@@ -50,8 +51,21 @@ fun CalibrationBar(
         Column(Modifier.padding(12.dp)) {
             Text("Kalibrace: $layerTitle", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Dvěma prsty posuň, otoč nebo zvětši mapu. Podklad zůstává na místě.",
+                "Táhni prsty po mapě — posouvá se stará vrstva, podklad zůstává na místě. " +
+                    "Dvěma prsty ji otoč nebo zvětši.",
                 style = MaterialTheme.typography.bodyMedium,
+            )
+            // The numbers are here because the eye is a poor judge of a 15 m shift on a phone,
+            // and because they prove the gesture was registered even where the two maps look
+            // alike -- over a forest, the overlay can move without anything obviously changing.
+            Text(
+                CalibrationReadout.describe(
+                    state.calibrationTransform,
+                    state.calibrationPivot?.first ?: 0.0,
+                    state.calibrationPivot?.second ?: 0.0,
+                ),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
             )
             Row(
                 Modifier
@@ -61,7 +75,7 @@ fun CalibrationBar(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TextButton(onClick = onCancel) { Text("Zrušit") }
-                TextButton(onClick = onReset, enabled = state.calibrationDirty) { Text("Vynulovat") }
+                TextButton(onClick = onReset, enabled = state.calibrationResettable) { Text("Vynulovat") }
                 Button(
                     onClick = { askLabel = true },
                     enabled = state.calibrationDirty,

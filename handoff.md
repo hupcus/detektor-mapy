@@ -437,3 +437,57 @@ a lámat české věty kvůli sloupci 120 by jen znesnadnilo porovnání se zdro
 
 Nasazení do knihovny dělá `DetectorRepository.seedNoktaLegend()`, které je **idempotentní podle
 jména detektoru**, takže tlačítko jde zmáčknout opakovaně bez následků.
+
+## Kalibrace vrstev: proč to dřív nefungovalo (2026-08-21)
+
+Uživatel nahlásil, že **Sladit ani Kalibrace se na mapě vůbec neprojeví**. Obojí
+byla skutečná chyba, ne nedorozumění.
+
+### Kořen: MapLibre si dlaždici nikdy nevyžádá znovu
+`LocalTileServer` počítal zdeformované dlaždice správně a `CalibratedTileComposer`
+je i správně skládal — jenže URL šablona (`/t/{id}/{z}/{x}/{y}`) se nikdy nezměnila.
+MapLibre Android nemá **žádné** API na refresh nebo invalidaci rastrového zdroje
+a styl nezná `raster-translate`. Ověřeno `javap` nad `android-sdk-11.11.0.aar`:
+`Source` umí jen `setVolatile` / `setMinimumTileUpdateInterval` (cache, ne překreslení),
+`RasterSource` nemá setter URL, `PropertyFactory` má u rastru jen barvy a opacity.
+Takže jakmile MapLibre dlaždici jednou vykreslil, kalibrace byla neviditelná.
+
+**Řešení (dvě části, obě nutné):**
+1. `urlTemplate()` nese generaci vrstvy (`?g=N`); `LayerManager` zrcadlí generaci
+   do `LayerUiState.tileRevision`, takže změna kalibrace proteče do `state.layers`
+   a `MapController` porovná šablony a **zdroj přestaví**. Server dotaz na query
+   nezajímá (`substringBefore('?')`), takže routování zůstalo beze změny.
+2. Během tažení se zdroj nepřestavuje vůbec — to by bylo 60 přestaveb za vteřinu.
+   Místo toho `CalibrationGhost` položí nad vrstvu `ImageSource` slepený z archivu
+   (`OverlayMosaic`) a při každém gestu jen posune jeho čtyři rohy. To je jediná
+   věc ve stylu, která se **dá** posunout, a stojí to jedno nativní volání.
+   `nudgeCalibration()` proto na server vůbec nesahá; server se dozví až při uložení.
+
+### Další chyby odhalené cestou
+- `GcpEditorState.canFit` chtěl 2 body i pro similarity → po prvním bodu bylo
+  všechno zašedlé. Nově 1 bod = `Affine2D.fitTranslation` (čistý posun).
+- `extentOf()` z jednoho bodu dával rámeček s nulovou plochou; `expand(1.2)` z nuly
+  je pořád nula, takže `getBestCalibrationFor` na něj nikdy nesedl → nový
+  `BBox.atLeast()` a minimum ~2 km.
+- `CalibrationListScreen` vypisoval `m2`/`m5` jako „posun". To je translační sloupec
+  měřený od počátku Mercatoru — s otočením 2° vyjde 100+ km. Nově společný
+  `CalibrationReadout`, který měří posun v pivotu a **převádí na skutečné metry**
+  (Mercator na 50,5° s. š. nafukuje o faktor ~1,57).
+- `calibrationDirty` se porovnávalo s identitou, ne s uloženým stavem → „Vynulovat"
+  nešlo uložit. Rozděleno na `calibrationDirty` (co uložit) a `calibrationResettable`.
+- `OverlayMosaic.render` dekódoval dlaždice bez kontroly rozměrů — doplněn stejný
+  strop 2048 px jako v `CalibratedTileComposer` (dlaždice jsou nedůvěryhodná data).
+
+### Ověřeno naostro na telefonu (Galaxy S25 Ultra, 2026-08-21)
+Debug build, vrstva II. VM (offline PMTiles), Úpicko. Tah přes ~490 px:
+lišta hlásila „posun 4329 m", uložená matice po přepočtu na zemské metry 4327 m,
+kontrola proti vzdálenosti Trutnov–Úpice na obrazovce ~4470 m. **Podklad se
+neposunul, stará vrstva ano.** Po uložení se dlaždice přenačetly zdeformované
+(ostré, ne rozmazaný náhled) a čip ukázal „kalibrace: …". GCP editor s jedním
+bodem: `Náhled` i `Uložit` aktivní, náhled se v horním panelu viditelně posunul.
+Testovací balíček i jeho data po ověření z telefonu smazány; release aplikace
+uživatele zůstala nedotčená.
+
+**Past na příště:** `adb shell input tap` do Compose `AlertDialog` občas mine,
+i když souřadnice sedí — spolehlivé až po `uiautomator dump` a kliknutí na střed
+`clickable` uzlu (ne text-uzlu).

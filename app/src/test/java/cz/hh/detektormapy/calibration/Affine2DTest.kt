@@ -149,6 +149,32 @@ class Affine2DTest {
     }
 
     @Test
+    fun `a single pair fits the shift between it`() {
+        val t = Affine2D.fitTranslation(listOf(PointPair(100.0, 200.0, 340.0, 150.0)))!!
+        assertThat(t.applyX(100.0, 200.0)).isWithin(1e-9).of(340.0)
+        assertThat(t.applyY(100.0, 200.0)).isWithin(1e-9).of(150.0)
+        // A shift and nothing else: no rotation, no scaling.
+        assertThat(t.scale).isWithin(1e-12).of(1.0)
+        assertThat(t.rotationRad).isWithin(1e-12).of(0.0)
+    }
+
+    @Test
+    fun `several pairs fit their mean shift`() {
+        val pairs = listOf(
+            PointPair(0.0, 0.0, 10.0, 0.0),
+            PointPair(0.0, 0.0, 20.0, 4.0),
+        )
+        val t = Affine2D.fitTranslation(pairs)!!
+        assertThat(t.tx).isWithin(1e-9).of(15.0)
+        assertThat(t.ty).isWithin(1e-9).of(2.0)
+    }
+
+    @Test
+    fun `no pairs fit nothing`() {
+        assertThat(Affine2D.fitTranslation(emptyList())).isNull()
+    }
+
+    @Test
     fun `inverting a singular transform fails loudly`() {
         val singular = Affine2D(1.0, 2.0, 0.0, 2.0, 4.0, 0.0)
         try {

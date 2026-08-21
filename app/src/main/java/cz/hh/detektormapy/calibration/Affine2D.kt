@@ -106,6 +106,21 @@ data class Affine2D(val a: Double, val b: Double, val tx: Double, val c: Double,
         }
 
         /**
+         * Pure translation (2 DOF) from >= 1 point pair -- the mean offset.
+         *
+         * One point is not a degenerate case to be rejected but the most common one in the
+         * field: you recognise the church on the 1840s sheet, you tap the same church on the
+         * ortophoto, and the whole sheet should slide over. Refusing to fit anything until a
+         * second point exists is what made the editor look broken.
+         */
+        fun fitTranslation(pairs: List<PointPair>): Affine2D? {
+            if (pairs.isEmpty()) return null
+            val dx = pairs.sumOf { it.dstX - it.srcX } / pairs.size
+            val dy = pairs.sumOf { it.dstY - it.srcY } / pairs.size
+            return translation(dx, dy)
+        }
+
+        /**
          * Least-squares affine fit (6 DOF) from >= 3 non-collinear point pairs.
          * Source points are the *overlay* coordinates, destination the *reference* ones.
          * Returns null when the system is degenerate.

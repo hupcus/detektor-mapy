@@ -266,6 +266,38 @@ fun MapScreen(navController: NavHostController, viewModel: MapViewModel = hiltVi
             map.easeCamera(CameraUpdateFactory.newCameraPosition(pos), 300)
         }
 
+        // Režim A shows a stitched stand-in for the overlay and moves *that* under the fingers;
+        // see CalibrationGhost for why the real raster layer cannot be moved directly.
+        var ghost by remember { mutableStateOf<CalibrationGhost?>(null) }
+        DisposableEffect(Unit) {
+            onDispose { ghost?.remove() }
+        }
+        LaunchedEffect(state.mode, state.calibrationLayerId, styleRef) {
+            val style = styleRef
+            val map = mapRef
+            val layerId = state.calibrationLayerId
+            if (style == null || map == null || state.mode != MapMode.CALIBRATE || layerId == null) {
+                ghost?.remove()
+                ghost = null
+                styleRef?.let { controller?.setGhostedLayer(it, null, state.layers) }
+                return@LaunchedEffect
+            }
+            val snapshot = viewModel.overlaySnapshot(
+                layerId,
+                map.visibleBBox().toMercatorRect(),
+                map.cameraPosition.zoom.toInt(),
+            ) ?: return@LaunchedEffect
+            val opacity = state.layers.firstOrNull { it.def.id == layerId }?.opacity ?: 1f
+            val attached = CalibrationGhost.attach(style, layerId, snapshot, state.calibrationTransform, opacity)
+            ghost = attached
+            // Only hide the real layer once the stand-in is definitely on screen, otherwise a
+            // layer with no local tiles would simply vanish the moment calibration started.
+            if (attached != null) controller?.setGhostedLayer(style, layerId, state.layers)
+        }
+        LaunchedEffect(state.calibrationTransform, ghost) {
+            ghost?.apply(state.calibrationTransform)
+        }
+
         // Calibration gesture layer: swallows gestures and moves only the overlay.
         if (state.mode == MapMode.CALIBRATE) {
             CalibrationGestureLayer(
@@ -435,6 +467,14 @@ fun MapLibreMap.visibleBBox(): BBox {
         north = bounds.latitudeNorth.coerceIn(-85.0, 85.0),
     )
 }
+
+/** The same box as `[west, south, east, north]` in EPSG:3857 metres. */
+fun BBox.toMercatorRect(): DoubleArray = doubleArrayOf(
+    WebMercator.lonToMeters(west),
+    WebMercator.latToMeters(south),
+    WebMercator.lonToMeters(east),
+    WebMercator.latToMeters(north),
+)
 
 /**
  * Converts a screen-space drag into an EPSG:3857 offset in metres.

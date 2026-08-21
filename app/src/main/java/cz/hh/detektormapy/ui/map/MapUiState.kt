@@ -1,5 +1,6 @@
 package cz.hh.detektormapy.ui.map
 
+import cz.hh.detektormapy.calibration.Affine2D
 import cz.hh.detektormapy.data.entity.FindEntity
 import cz.hh.detektormapy.data.entity.PlaceEntity
 import cz.hh.detektormapy.data.entity.SearchedAreaEntity
@@ -29,7 +30,14 @@ data class MapUiState(
     val keepScreenOn: Boolean = true,
     val mode: MapMode = MapMode.NAVIGATE,
     val calibrationLayerId: String? = null,
+    /** True when the pending nudge differs from what is already stored, i.e. worth saving. */
     val calibrationDirty: Boolean = false,
+    /** True when there is any correction in place at all, i.e. there is something to zero. */
+    val calibrationResettable: Boolean = false,
+    /** Nudge accumulated so far in Režim A; drives the live ghost and the readout in the bar. */
+    val calibrationTransform: Affine2D = Affine2D.IDENTITY,
+    /** Map centre in EPSG:3857 metres when Režim A started; where the shift is measured. */
+    val calibrationPivot: Pair<Double, Double>? = null,
     val activeCalibrationLabel: String? = null,
     val finds: List<FindEntity> = emptyList(),
     val places: List<PlaceEntity> = emptyList(),

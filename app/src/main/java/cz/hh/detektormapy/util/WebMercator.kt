@@ -93,6 +93,19 @@ data class BBox(val west: Double, val south: Double, val east: Double, val north
         return BBox(west - dx, south - dy, east + dx, north + dy)
     }
 
+    /**
+     * Grows the box around its centre until it spans at least [minDeg] each way.
+     *
+     * Guards the degenerate case: a box built from a single point has zero area, and zero area
+     * multiplied by any expansion factor is still zero -- so it would contain nothing, match
+     * nothing, and silently make whatever it describes unreachable.
+     */
+    fun atLeast(minDeg: Double): BBox {
+        val dx = ((minDeg - widthDeg) / 2.0).coerceAtLeast(0.0)
+        val dy = ((minDeg - heightDeg) / 2.0).coerceAtLeast(0.0)
+        return BBox(west - dx, south - dy, east + dx, north + dy)
+    }
+
     companion object {
         /** Whole Czech Republic, used as the default download / sanity bound. */
         val CZECHIA = BBox(11.9, 48.4, 19.0, 51.2)

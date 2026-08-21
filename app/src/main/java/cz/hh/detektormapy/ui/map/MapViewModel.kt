@@ -57,6 +57,16 @@ class MapViewModel @Inject constructor(
     private val headingState = MutableStateFlow<Float?>(null)
     private val modeState = MutableStateFlow(MapMode.NAVIGATE)
     private val calibrationLayerState = MutableStateFlow<String?>(null)
+
+    /**
+     * What Režim A started from: the map centre in EPSG:3857 metres, plus the calibration the
+     * layer already had. Both are needed to answer "is there anything worth saving": comparing
+     * against the identity instead meant that zeroing an existing calibration left the Save
+     * button disabled, so a wrong calibration could be seen but never undone.
+     */
+    private data class CalibrationAnchor(val pivotX: Double, val pivotY: Double, val baseline: Affine2D)
+
+    private val calibrationAnchor = MutableStateFlow<CalibrationAnchor?>(null)
     private val pendingTransform = MutableStateFlow(Affine2D.IDENTITY)
     private val drawingState = MutableStateFlow<List<Pair<Double, Double>>>(emptyList())
     private val navigateTargetState = MutableStateFlow<PlaceEntity?>(null)
@@ -176,8 +186,16 @@ class MapViewModel @Inject constructor(
      * drags the 1840s map until the pond matches the pond they are standing next to.
      */
     fun startCalibration(layerId: String) {
+        val existing = layerManager.calibrationOf(layerId) ?: Affine2D.IDENTITY
         calibrationLayerState.value = layerId
-        pendingTransform.value = layerManager.calibrationOf(layerId) ?: Affine2D.IDENTITY
+        pendingTransform.value = existing
+        // The readout measures the shift here rather than at the coordinate origin, so a nudge
+        // that also rotates reports the distance the user can actually see on screen.
+        calibrationAnchor.value = CalibrationAnchor(
+            pivotX = WebMercator.lonToMeters(viewport.centerLon),
+            pivotY = WebMercator.latToMeters(viewport.centerLat),
+            baseline = existing,
+        )
         modeState.value = MapMode.CALIBRATE
     }
 
@@ -189,6 +207,7 @@ class MapViewModel @Inject constructor(
             refreshCalibrationFor(layerId, viewport.centerLat, viewport.centerLon)
         }
         pendingTransform.value = Affine2D.IDENTITY
+        calibrationAnchor.value = null
         calibrationLayerState.value = null
     }
 
@@ -196,6 +215,11 @@ class MapViewModel @Inject constructor(
      * Applies an incremental similarity nudge coming from the gesture detector. [dxMeters] and
      * [dyMeters] are already converted to EPSG:3857 metres by the caller, so the calibration is
      * zoom independent.
+     *
+     * Deliberately does *not* touch the tile server. Re-warping and re-encoding every visible
+     * tile at gesture frequency would burn the battery for nothing, because MapLibre would not
+     * redraw them anyway -- the live feedback comes from the ghost overlay, which only needs
+     * this transform. The server hears about it once, on save or cancel.
      */
     fun nudgeCalibration(
         pivotLat: Double,
@@ -205,20 +229,21 @@ class MapViewModel @Inject constructor(
         rotationRad: Double,
         scale: Double,
     ) {
-        val layerId = calibrationLayerState.value ?: return
+        if (calibrationLayerState.value == null) return
         val pivotX = WebMercator.lonToMeters(pivotLon)
         val pivotY = WebMercator.latToMeters(pivotLat)
         val step = Affine2D.similarity(pivotX, pivotY, dxMeters, dyMeters, rotationRad, scale)
-        val combined = step.concat(pendingTransform.value)
-        pendingTransform.value = combined
-        layerManager.applyCalibration(layerId, combined, null)
+        pendingTransform.value = step.concat(pendingTransform.value)
     }
 
     fun resetPendingCalibration() {
-        val layerId = calibrationLayerState.value ?: return
+        if (calibrationLayerState.value == null) return
         pendingTransform.value = Affine2D.IDENTITY
-        layerManager.applyCalibration(layerId, Affine2D.IDENTITY, null)
     }
+
+    /** Pixels for the live calibration ghost; null when the layer has no local archive. */
+    suspend fun overlaySnapshot(layerId: String, visibleMeters: DoubleArray, zoom: Int) =
+        layerManager.renderOverlaySnapshot(layerId, visibleMeters, zoom)
 
     /** Persists the current nudge for the current viewport (PLAN.md F3-1). */
     fun saveCalibration(label: String, nowMillis: Long = System.currentTimeMillis()) {
@@ -420,11 +445,17 @@ class MapViewModel @Inject constructor(
             calibrationLayerState,
             pendingTransform,
             calibrationLabels,
-        ) { mode, layerId, transform, labels ->
+            calibrationAnchor,
+        ) { mode, layerId, transform, labels, anchor ->
             CalibrationSnapshot(
                 mode = mode,
                 layerId = layerId,
-                dirty = !transform.isIdentity(),
+                transform = transform,
+                pivot = anchor?.let { it.pivotX to it.pivotY },
+                // Worth saving only if it differs from what the layer already had; worth
+                // zeroing whenever there is any correction in place at all.
+                dirty = transform != (anchor?.baseline ?: Affine2D.IDENTITY),
+                resettable = !transform.isIdentity(),
                 // In calibration mode show the layer being adjusted; otherwise summarise.
                 label = layerId?.let { labels[it] } ?: labels.values.firstOrNull(),
             )
@@ -498,6 +529,9 @@ class MapViewModel @Inject constructor(
                 mode = calibrationValue.mode,
                 calibrationLayerId = calibrationValue.layerId,
                 calibrationDirty = calibrationValue.dirty,
+                calibrationResettable = calibrationValue.resettable,
+                calibrationTransform = calibrationValue.transform,
+                calibrationPivot = calibrationValue.pivot,
                 activeCalibrationLabel = calibrationValue.label,
                 finds = pinsValue.first,
                 places = pinsValue.second,
@@ -529,7 +563,10 @@ class MapViewModel @Inject constructor(
     private data class CalibrationSnapshot(
         val mode: MapMode,
         val layerId: String?,
+        val transform: Affine2D,
+        val pivot: Pair<Double, Double>?,
         val dirty: Boolean,
+        val resettable: Boolean,
         val label: String?,
     )
 

@@ -130,4 +130,11 @@ data class LayerUiState(
     val unavailableReason: String? = null,
     /** Id of the calibration currently applied, if any. */
     val activeCalibrationId: Long? = null,
+    /**
+     * Bumped whenever the layer's tiles would render differently -- a calibration was applied,
+     * cleared, or the archive was re-registered. Carried in the UI state purely so that a
+     * calibration change reaches the map: without it the layer list stays equal, Compose skips
+     * the sync, and the map keeps showing the tiles it drew before.
+     */
+    val tileRevision: Int = 0,
 )

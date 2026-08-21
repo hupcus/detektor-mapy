@@ -349,6 +349,12 @@ private fun GcpControls(
                 )
             }
 
+            Text(
+                state.fitLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+
             if (state.tpsAdvisable) {
                 Text(
                     "6+ bodů — pro přesný TPS warp exportuj GCP a spusť tools/warp_scan.py " +
